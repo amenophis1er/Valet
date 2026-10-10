@@ -7,6 +7,8 @@ there: it reads the page, clicks, types, follows links and fills forms while
 you watch. Everything runs inside the extension — no server, no account, no
 companion app.
 
+![Valet summarizing a Wikipedia article: the page framed in violet while it works, the side panel reading the article part by part](docs/images/working.jpg)
+
 - **Your tab is the workspace.** The agent works in the page you're on, shown
   with a glowing border and its own "Valet" cursor, and follow-up messages
   continue in the same tab. Watch it work in any of its tabs; Stop hands them
@@ -66,10 +68,14 @@ companion app.
   model turn, every action with its arguments and result, every approval and
   state change, with times — one JSON file to inspect or share.
 
+<p align="center"><img src="docs/images/pdf.png" width="440" alt="The first page of a PDF report Valet wrote: a title block with the date, a summary paragraph, and eight bullet points"></p>
+
 ## Safety model
 
 The model reads untrusted web pages, so the extension — not the model —
 enforces the rules:
+
+![Valet asking before it submits a form: the filled pizza order on the left, and on the right a card showing where the data goes and every value, with Allow once, Allow in chat and Deny](docs/images/approval.png)
 
 - **Approvals last one conversation.** A request starts allowed only on the
   page you handed it. Any other site asks: *Allow once* (this request) or
