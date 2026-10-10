@@ -84,6 +84,15 @@ test('opens the welcome guide on install, where the model gets connected', async
   await expect.poll(() => context.pages().some((page) => page.url().endsWith('/welcome.html'))).toBe(false);
 });
 
+test('New conversation puts the cursor in the message box, from Settings too', async () => {
+  const panel = await openPanel();
+  await panel.getByRole('button', { name: 'Settings' }).click();
+  await panel.getByRole('button', { name: 'New conversation' }).click();
+  await expect(panel.locator('#settings-view')).toBeHidden();
+  await expect(panel.locator('#goal')).toBeFocused();
+  await panel.close();
+});
+
 test('adds a connection in Settings and picks its model', async () => {
   const panel = await openPanel();
   await panel.getByRole('button', { name: 'Settings' }).click();

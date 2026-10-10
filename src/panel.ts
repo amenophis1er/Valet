@@ -1417,7 +1417,12 @@ $('stop').onclick = () => send({ type: 'stop' });
 $('step-next').onclick = () => send({ type: 'step' });
 $('learn').onclick = () => send({ type: 'set-learning', on: state?.learning !== true });
 $('resume').onclick = () => send({ type: 'resume' });
-$('new-conversation').onclick = () => send({ type: 'new-conversation' });
+// A new conversation: back in the chat, cursor in the message box, ready to type.
+$('new-conversation').onclick = () => {
+  if (!$('settings-view').hidden) showSettings(false);
+  send({ type: 'new-conversation' });
+  $('goal').focus();
+};
 $('lightbox-close').onclick = () => $<HTMLDialogElement>('lightbox').close();
 $('lightbox').addEventListener('click', (event) => { if (event.target === event.currentTarget) $<HTMLDialogElement>('lightbox').close(); });
 $('where').onclick = toggleWhere;
