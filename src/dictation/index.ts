@@ -18,6 +18,7 @@ export type { RecognitionClass, Recognizer } from './recognizer.js';
 export { attachDictation } from './field.js';
 export { finish, sameWords, settle } from './polish.js';
 export { onDeviceProofread } from './proofread.js';
+export { onDeviceModel, type ModelState, type OnDeviceModel } from './model.js';
 export { chromeSpeech, createRecognizer } from './recognizer.js';
 
 /**

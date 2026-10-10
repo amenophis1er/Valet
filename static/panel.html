@@ -167,6 +167,24 @@
       </div>
     </section>
 
+    <section class="group" aria-labelledby="dictation-title">
+      <div class="group-head">
+        <h3 id="dictation-title">Dictation</h3>
+        <p class="muted">Chrome's built-in model adds the punctuation to what you dictate with the mic. It runs on this computer: nothing you say is sent anywhere for it.</p>
+      </div>
+      <div class="sheet model-sheet">
+        <div class="model-row">
+          <div class="name">
+            <div class="title">On-device model</div>
+            <small id="dictation-model-state" role="status">Checking…</small>
+          </div>
+          <button id="dictation-model-download" class="primary small" hidden>Download</button>
+          <button id="dictation-model-cancel" class="ghost small" hidden>Cancel</button>
+        </div>
+        <progress id="dictation-model-progress" class="model-progress" max="1" value="0" hidden aria-labelledby="dictation-model-state"></progress>
+      </div>
+    </section>
+
     <section class="group" aria-labelledby="pace-title">
       <div class="group-head">
         <h3 id="pace-title">Pace</h3>

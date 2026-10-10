@@ -9,6 +9,7 @@
  * instruction. Either can be missing; then the text rules alone stand.
  */
 
+import { languageModelIo, proofreaderOptions } from './model.js';
 import { sameWords } from './polish.js';
 
 export type Proofread = (text: string, lang: string) => Promise<string | null>;
@@ -37,15 +38,14 @@ function withTimeout<T>(work: Promise<T>): Promise<T | null> {
 export function onDeviceProofread(scope: { Proofreader?: ProofreaderClass; LanguageModel?: LanguageModelClass } = globalThis as never): Proofread {
   return async (text, lang) => {
     if (!text.trim() || text.length > MAX_CHARS) return null;
-    const language = lang.split(/[-_]/)[0] ?? 'en';
     const accept = (result: string | null | undefined): string | null => {
       const cleaned = result?.trim();
       return cleaned && sameWords(text, cleaned) ? cleaned : null;
     };
     try {
       const { Proofreader } = scope;
-      if (Proofreader && await Proofreader.availability({ expectedInputLanguages: [language] }) === 'available') {
-        const proofreader = await Proofreader.create({ expectedInputLanguages: [language] });
+      if (Proofreader && await Proofreader.availability(proofreaderOptions(lang)) === 'available') {
+        const proofreader = await Proofreader.create(proofreaderOptions(lang));
         try {
           const result = accept((await withTimeout(proofreader.proofread(text)))?.correctedInput);
           if (result) return result;
@@ -54,7 +54,7 @@ export function onDeviceProofread(scope: { Proofreader?: ProofreaderClass; Langu
     } catch { /* not this one */ }
     try {
       const { LanguageModel } = scope;
-      const io = { expectedInputs: [{ type: 'text', languages: [language] }], expectedOutputs: [{ type: 'text', languages: [language] }] };
+      const io = languageModelIo(lang);
       if (LanguageModel && await LanguageModel.availability(io) === 'available') {
         const session = await LanguageModel.create({ ...io, initialPrompts: [{ role: 'system', content: INSTRUCTION }] });
         try {

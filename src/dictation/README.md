@@ -24,6 +24,7 @@ button.onclick = () => mic.toggle();
 | `recognizer.ts` | Chrome's speech recognition: settled text and the current guess, on the device when it can. |
 | `polish.ts` | Pure text rules: `settle` fixes casing as a phrase settles, `finish` adds the end period or question mark, `sameWords` checks that a cleanup changed no word. |
 | `proofread.ts` | The on-device cleanup: Chrome's Proofreader API, else its Prompt API. It only uses a model that is already on the device, and throws away any answer that changed a word. |
+| `model.ts` | Chrome's built-in model: whether this device has it, and downloading it when the owner asks, with progress and cancel. Chrome downloads it only for a page that asks after a click, so give people a button. |
 | `field.ts` | Binds it all to a field: the live text, then the end pass. |
 | `index.ts` | `dictation(field, options)` with Chrome's parts, plus every part on its own. |
 

@@ -11,7 +11,7 @@ import { setupConnections } from './connections-ui.js';
 import { iconButton, TRASH } from './ui.js';
 import { readAttachment, thumbnailOf } from './composer.js';
 import { grabFrame } from './share.js';
-import { dictation as attachDictation } from './dictation/index.js';
+import { dictation as attachDictation, onDeviceModel, type ModelState } from './dictation/index.js';
 import { MAX_ATTACHMENTS, checkAttachments, type Attachment } from './loop/attachments.js';
 import { AI_PREFIX, HEARTBEAT_MS, MEDIA_PREFIX, PACE_KEY, PANEL_PORT, conversationForTab, panelPortName, type Media, type PanelIntent, type PanelState, type WorkerMessage } from './loop/protocol.js';
 import { conversationHtml, conversationMarkdown } from './export.js';
@@ -886,6 +886,62 @@ function toggleDictation(): void {
   if (dictation.toggle()) { showError(''); $<HTMLTextAreaElement>('goal').focus(); }
 }
 
+/* Settings → Dictation: Chrome downloads its built-in model only when asked, so the owner gets a button for it. */
+
+const builtInModel = onDeviceModel(globalThis.navigator?.language || 'en-US');
+let modelDownload: AbortController | undefined;
+
+const MODEL_STATES: Record<ModelState['kind'], string> = {
+  unsupported: '',
+  downloadable: 'Not downloaded. About 2 GB, downloaded once by Chrome and shared with every site and extension that uses it.',
+  downloading: 'Chrome is downloading it.',
+  ready: 'Ready: dictation gets its punctuation from it.',
+};
+
+function showModel(state: ModelState, note = ''): void {
+  const downloading = modelDownload !== undefined;
+  $('dictation-model-state').textContent = note || (state.kind === 'unsupported' ? state.reason : MODEL_STATES[state.kind]);
+  $('dictation-model-download').hidden = downloading || state.kind !== 'downloadable';
+  $('dictation-model-cancel').hidden = !downloading;
+  $('dictation-model-progress').hidden = !downloading;
+}
+
+async function renderModel(): Promise<void> {
+  if (modelDownload) return;
+  showModel(await builtInModel.state());
+}
+
+$('dictation-model-download').onclick = async () => {
+  if (modelDownload) return;
+  const controller = new AbortController();
+  modelDownload = controller;
+  const bar = $<HTMLProgressElement>('dictation-model-progress');
+  bar.value = 0;
+  showModel({ kind: 'downloading' }, 'Starting the download…');
+  try {
+    const state = await builtInModel.download({
+      signal: controller.signal,
+      onProgress: (fraction) => {
+        bar.value = fraction;
+        $('dictation-model-state').textContent = `Downloading… ${Math.round(fraction * 100)}%`;
+      },
+    });
+    modelDownload = undefined;
+    showModel(state);
+  } catch (error) {
+    modelDownload = undefined;
+    const state = await builtInModel.state();
+    if (error instanceof Error && error.name === 'AbortError') {
+      // Chrome may finish a download that was well under way; say which happened.
+      showModel(state, state.kind === 'ready' ? MODEL_STATES.ready
+        : state.kind === 'downloading' ? 'Cancelled here, but Chrome is finishing the download in the background.' : 'Download cancelled.');
+    } else {
+      showModel(state, `The download did not finish: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+};
+$('dictation-model-cancel').onclick = () => modelDownload?.abort();
+
 /** The composer grows with what is typed, up to its max height. */
 function grow(): void {
   const goal = $<HTMLTextAreaElement>('goal');
@@ -916,7 +972,7 @@ function showSettings(open: boolean): void {
   $('open-settings').setAttribute('aria-pressed', String(open));
   $('settings-view').hidden = !open;
   $('chat-view').hidden = open;
-  if (open) { void connections.render(); void renderPace(); void renderSkills(); }
+  if (open) { void connections.render(); void renderPace(); void renderSkills(); void renderModel(); }
   else { send({ type: 'get' }); void renderActiveConnection(); }
 }
 
