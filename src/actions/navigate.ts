@@ -6,6 +6,6 @@ export const navigate: ActionSpec = {
   acting: false,
   fields: { required: ['url'], optional: ['newTab'] },
   // The page it opens is a site like any other: scope-checked before the tab moves.
-  facts: { goesTo: (call) => (typeof call.url === 'string' ? call.url : undefined) },
+  facts: { goesTo: (call) => (typeof call.url === 'string' ? call.url : undefined), followsLink: false, submits: null },
   step: (call, { verb }) => `${verb('Opened', 'Open')} ${String(call.url ?? '')}${call.newTab === true ? ' in a new tab' : ''}`,
 };

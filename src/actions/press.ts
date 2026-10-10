@@ -5,6 +5,6 @@ export const press: ActionSpec = {
   name: 'press',
   acting: true,
   fields: { required: ['key', 'target'] },
-  facts: { submits: (call) => (call.key === 'Enter' ? 'enter' : call.key === 'Space' ? 'space' : undefined) },
+  facts: { goesTo: null, followsLink: false, submits: (call) => (call.key === 'Enter' ? 'enter' : call.key === 'Space' ? 'space' : undefined) },
   step: (call, { verb, what }) => `${verb('Pressed', 'Press')} ${String(call.key ?? '')} on ${what}`,
 };

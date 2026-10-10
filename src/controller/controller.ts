@@ -17,7 +17,7 @@ import { Cancellation, CancelledError, PreconditionError, sentence, type Command
 import { boundObservation } from './observation.js';
 import { originOf, type Decision, type SubmitTarget, type Verdict } from '../scope/scope.js';
 import type { SubmitFingerprint } from '../executor/content.js';
-import { ACTING, UNTRUSTED, commandSchema, type BrowserCommand } from '../actions/index.js';
+import { ACTING, UNTRUSTED, commandSchema, specOf, type BrowserCommand } from '../actions/index.js';
 
 /** The slice of the executor the controller drives. `BrowserCommands` satisfies it. */
 export interface ExecutorLike {
@@ -169,6 +169,7 @@ export class RunController {
     // 3. Evidence.
     if (acting && (!this.#latest || command.observation !== this.#latest.id)) return this.#refuse(STALE, cancel);
 
+    // The two reads are answered here, without a dispatch: the evidence they produce is the controller's own.
     if (command.action === 'observe') return this.#observe(cancel, false);
     if (command.action === 'screenshot') return this.#screenshot(cancel);
 
@@ -272,12 +273,17 @@ export class RunController {
     await this.#executor.preview(this.#session, { ...(command.target ? { target: command.target } : {}), ...(point ? { point } : {}) }).catch(() => undefined);
   }
 
-  /** Scope checks before dispatch: navigate targets and link hrefs. */
+  /**
+   * Scope checks before dispatch, from the facts the action declares (src/actions):
+   * the URL it goes to, or the link it would follow.
+   */
   async #scope(command: BrowserCommand, cancel: Cancellation): Promise<ToolResult | undefined> {
+    const facts = specOf(command.action).facts;
     let origin: string | null = null;
     let reason: AskReason = 'navigate';
-    if (command.action === 'navigate') origin = originOf(command.url ?? '');
-    if (command.action === 'click' && command.target?.ref) {
+    const goesTo = facts.goesTo?.(command);
+    if (goesTo !== undefined) origin = originOf(goesTo);
+    if (facts.followsLink && command.target?.ref) {
       const href = this.#latest?.targets?.find((target) => target.ref === command.target!.ref)?.href;
       if (href) { origin = originOf(href); reason = 'link'; }
     }
@@ -300,8 +306,8 @@ export class RunController {
    * — a value, the destination — the owner is asked again.
    */
   async #submission(command: BrowserCommand, cancel: Cancellation): Promise<ToolResult | undefined> {
-    // A right click opens a menu; it never activates a button or submits a form.
-    const via = command.action === 'click' && command.button === 'right' ? undefined : command.action === 'click' ? 'click' : command.action === 'press' && command.key === 'Enter' ? 'enter' : command.action === 'press' && command.key === 'Space' ? 'space' : undefined;
+    // How this call could submit a form, as its action declares it (a right click, for one, cannot).
+    const via = specOf(command.action).facts.submits?.(command);
     if (!via || !command.target || !this.#executor.submitFacts || !this.#gate.submitVerdict || !this.#gate.askSubmit) return undefined;
     // A stale or vanished target is left to the executor's own refusal, which
     // comes before any dispatch. Any other failure to read the form fails

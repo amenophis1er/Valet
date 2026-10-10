@@ -27,16 +27,16 @@ describe('the action registry', () => {
   });
 
   it('declares the facts the controller enforces: where a call goes, links followed, and submissions', () => {
-    expect(SPECS.navigate.facts?.goesTo?.({ action: 'navigate', url: 'https://a.test/' })).toBe('https://a.test/');
-    expect(SPECS.click.facts?.followsLink).toBe(true);
-    expect(SPECS.click.facts?.submits?.({ action: 'click' })).toBe('click');
-    expect(SPECS.click.facts?.submits?.({ action: 'click', button: 'right' })).toBeUndefined();
-    expect(SPECS.press.facts?.submits?.({ action: 'press', key: 'Enter' })).toBe('enter');
-    expect(SPECS.press.facts?.submits?.({ action: 'press', key: 'Space' })).toBe('space');
-    expect(SPECS.press.facts?.submits?.({ action: 'press', key: 'Tab' })).toBeUndefined();
+    expect(SPECS.navigate.facts.goesTo?.({ action: 'navigate', url: 'https://a.test/' })).toBe('https://a.test/');
+    expect(SPECS.click.facts.followsLink).toBe(true);
+    expect(SPECS.click.facts.submits?.({ action: 'click' })).toBe('click');
+    expect(SPECS.click.facts.submits?.({ action: 'click', button: 'right' })).toBeUndefined();
+    expect(SPECS.press.facts.submits?.({ action: 'press', key: 'Enter' })).toBe('enter');
+    expect(SPECS.press.facts.submits?.({ action: 'press', key: 'Space' })).toBe('space');
+    expect(SPECS.press.facts.submits?.({ action: 'press', key: 'Tab' })).toBeUndefined();
     // Nothing else can submit, follow a link or go anywhere.
-    for (const name of ACTIONS.filter((n) => !['click', 'press'].includes(n))) expect(SPECS[name].facts?.submits).toBeUndefined();
-    for (const name of ACTIONS.filter((n) => n !== 'click')) expect(SPECS[name].facts?.followsLink).toBeUndefined();
-    for (const name of ACTIONS.filter((n) => n !== 'navigate')) expect(SPECS[name].facts?.goesTo).toBeUndefined();
+    for (const name of ACTIONS.filter((n) => !['click', 'press'].includes(n))) expect(SPECS[name].facts.submits).toBeNull();
+    for (const name of ACTIONS.filter((n) => n !== 'click')) expect(SPECS[name].facts.followsLink).toBe(false);
+    for (const name of ACTIONS.filter((n) => n !== 'navigate')) expect(SPECS[name].facts.goesTo).toBeNull();
   });
 });

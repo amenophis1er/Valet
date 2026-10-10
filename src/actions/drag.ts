@@ -1,5 +1,5 @@
 import { targetOrPoint } from './aim.js';
-import type { ActionSpec } from './spec.js';
+import { INERT, type ActionSpec } from './spec.js';
 
 type End = { target?: { ref?: string; name?: string; role?: string }; point?: { x?: number; y?: number } } | undefined;
 
@@ -7,6 +7,7 @@ type End = { target?: { ref?: string; name?: string; role?: string }; point?: { 
 export const drag: ActionSpec = {
   name: 'drag',
   acting: true,
+  facts: INERT,
   fields: { optional: ['target', 'point', 'screenshot', 'to'] },
   rules(call, issue) {
     targetOrPoint(call, issue);

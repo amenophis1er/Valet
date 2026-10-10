@@ -11,6 +11,7 @@ export const click: ActionSpec = {
     targetOrPoint(call, issue);
   },
   facts: {
+    goesTo: null,
     followsLink: true,
     // A right click opens a menu; it never activates a button or submits a form.
     submits: (call) => (call.button === 'right' ? undefined : 'click'),

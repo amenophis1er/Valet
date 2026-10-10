@@ -40,18 +40,26 @@ export interface ActionSpec {
   fields: { required?: readonly FieldName[]; optional?: readonly FieldName[] };
   /** Rules beyond which fields are present, checked after the required ones. */
   rules?(call: Call, issue: Issue): void;
-  /** Facts the controller enforces. */
-  facts?: {
-    /** The URL this call goes to, scope-checked before dispatch. */
-    goesTo?(call: Call): string | undefined;
-    /** A step on a link goes where the link points: that origin is scope-checked before dispatch. */
-    followsLink?: boolean;
-    /** How this call could submit a form, if it could; the owner approves a submission before it is sent. */
-    submits?(call: Call): SubmitVia | undefined;
-  };
+  /**
+   * Facts the controller enforces. Every spec states every fact, even when the
+   * answer is "no": a fact left out is a compile error, never a skipped check.
+   */
+  facts: Facts;
   /** The step in the owner's words: past tense once done ("Clicked …"), the plain verb when not. */
   step(call: Call, words: Words): string;
 }
+
+export interface Facts {
+  /** The URL this call goes to, scope-checked before dispatch; null when it goes nowhere by itself. */
+  goesTo: ((call: Call) => string | undefined) | null;
+  /** A step on a link goes where the link points: that origin is scope-checked before dispatch. */
+  followsLink: boolean;
+  /** How this call could submit a form, if it could; the owner approves a submission before it is sent. */
+  submits: ((call: Call) => SubmitVia | undefined) | null;
+}
+
+/** Facts for an action that goes nowhere, follows no link and submits nothing. */
+export const INERT: Facts = { goesTo: null, followsLink: false, submits: null };
 
 /** What a step's wording can use: the names of what it acts on, from the observation the model saw. */
 export interface Words {
