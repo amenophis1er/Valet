@@ -32,6 +32,16 @@ export const STATE_ATTRIBUTE = 'data-state';
 /** How long the whole thing may take before the file is given up on. */
 const PRINT_TIMEOUT_MS = 15_000;
 
+/**
+ * Every page's footer: the document's title on the left, "3 / 5" on the right.
+ * Chrome fills the classed spans (the title from document.title, escaped); the
+ * template is fixed text, nothing of the model's goes into it.
+ */
+const FOOTER = '<div style="width:100%;margin:0 18mm;display:flex;justify-content:space-between;gap:12px;'
+  + 'font:7.5pt -apple-system,BlinkMacSystemFont,\'Segoe UI\',system-ui,sans-serif;color:#8F8AA0;">'
+  + '<span class="title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>'
+  + '<span style="flex:none;font-variant-numeric:tabular-nums;"><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>';
+
 /** Waits, in the page, until document.ts has set its state; rejects if it never does. */
 const READY = `new Promise((resolve, reject) => {
   const started = Date.now();
@@ -84,7 +94,7 @@ async function print(chrome: PdfChrome, tabId: number, url: string): Promise<str
   if (ready?.exceptionDetails) throw new Error(ready.exceptionDetails.exception?.description ?? ready.exceptionDetails.text ?? 'The document did not render.');
   if (ready?.result?.value === 'gone') throw new Error('The document to print was no longer stored.');
   if (ready?.result?.value !== 'ready') throw new Error('The document did not render.');
-  const printed = await send('Page.printToPDF', { printBackground: true, preferCSSPageSize: true }) as { data?: string } | undefined;
+  const printed = await send('Page.printToPDF', { printBackground: true, preferCSSPageSize: true, displayHeaderFooter: true, headerTemplate: '<span></span>', footerTemplate: FOOTER }) as { data?: string } | undefined;
   if (!printed?.data) throw new Error('Chrome returned no PDF.');
   return printed.data;
 }

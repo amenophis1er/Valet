@@ -29,7 +29,10 @@ export const SAVE_FILE_TOOL = {
     'Create a file for the owner to download: a summary, notes, a table as CSV, data as JSON, or a document as PDF.',
     'The panel shows it with a Download button; it reaches their disk only when they click.',
     `Allowed extensions: ${Object.keys(TYPES).map((ext) => `.${ext}`).join(', ')}. Write the complete content in one call.`,
-    'For a .pdf, write the content as Markdown (headings, lists, tables, code): Valet lays it out and makes the PDF.',
+    'For a .pdf, write the content as Markdown: Valet lays it out as a designed document and makes the PDF.',
+    'Start a .pdf with a header block: a line "---", then "title: …", "subtitle: …" (one line saying what the document is), and "sources:" with one "  - Name — https://…" line per page you used, then "---".',
+    'Then write it like a short report: open with a two- or three-sentence summary, put each topic under a "## " heading, use a table when comparing things, a "> " quote for a key point, and keep paragraphs short.',
+    'Do not repeat the title as a heading or list the sources again in the body.',
     'This is the only way to give the owner a file: never upload their content to a website to do it.',
   ].join(' '),
   inputSchema: {
