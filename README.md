@@ -153,6 +153,7 @@ watcher follows its build: `npm install --no-save ../byok`.
 | `src/executor/input/` | One file per input action (click, drag, fill…), behind a narrow driver |
 | `src/scope/` | Which sites a run may reach, and network-level containment |
 | `src/panel.ts`, `static/` | The side panel |
+| `src/dictation/` | The mic: speech to text with punctuation cleanup, self-contained ([README](src/dictation/README.md)) |
 
 Model connectivity comes from
 [byok](https://github.com/amenophis1er/byok),

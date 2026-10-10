@@ -11,7 +11,7 @@ import { setupConnections } from './connections-ui.js';
 import { iconButton, TRASH } from './ui.js';
 import { readAttachment, thumbnailOf } from './composer.js';
 import { grabFrame } from './share.js';
-import { startDictation, type Dictation } from './dictation.js';
+import { dictation as attachDictation } from './dictation/index.js';
 import { MAX_ATTACHMENTS, checkAttachments, type Attachment } from './loop/attachments.js';
 import { AI_PREFIX, HEARTBEAT_MS, MEDIA_PREFIX, PACE_KEY, PANEL_PORT, conversationForTab, panelPortName, type Media, type PanelIntent, type PanelState, type WorkerMessage } from './loop/protocol.js';
 import { conversationHtml, conversationMarkdown } from './export.js';
@@ -669,7 +669,7 @@ function submit(): void {
   // Checked here too, so a refused batch never costs the owner their draft.
   const refused = checkAttachments(pending);
   if (refused) { showError(refused); return; }
-  dictation?.stop();
+  dictation.stop();
   const choice = whereNow();
   send({ type: 'run', goal: text, ...(choice === 'this' && currentTab?.id !== undefined ? { tabId: currentTab.id } : {}), useNewTab: choice === 'new',
     ...(pending.length > 0 ? { attachments: pending } : {}), ...(chosenSkills.length > 0 ? { skillIds: chosenSkills.map((skill) => skill.id) } : {}) });
@@ -867,35 +867,23 @@ async function captured(message: Extract<WorkerMessage, { type: 'captured' }>): 
 
 /* ---- dictation ---- */
 
-let dictation: Dictation | undefined;
+// The mic writes into the goal box as the owner speaks, and tidies punctuation once they stop (src/dictation).
+const dictation = attachDictation($<HTMLTextAreaElement>('goal'), {
+  onInput: () => grow(),
+  onListening: (listening) => $('mic').setAttribute('aria-pressed', String(listening)),
+  onEnd: (error) => {
+    // The side panel cannot show the microphone prompt: the first time, mic.html asks in a tab.
+    if (error === 'not-allowed') {
+      showError('Allow the microphone in the tab that just opened, then press the mic again.');
+      void chrome.tabs.create({ url: chrome.runtime.getURL('mic.html') });
+    } else if (error) {
+      showError(`Dictation stopped: ${error}.`);
+    }
+  },
+});
 
 function toggleDictation(): void {
-  const mic = $('mic');
-  if (dictation) { dictation.stop(); return; }
-  const goal = $<HTMLTextAreaElement>('goal');
-  // Only the current guess is replaced as it firms up; words already heard and anything typed meanwhile stay.
-  let guess = '';
-  dictation = startDictation({
-    onText: (heard, guessing) => {
-      let text = guess && goal.value.endsWith(guess) ? goal.value.slice(0, -guess.length) : goal.value;
-      const join = (value: string) => (text && value && !/\s$/.test(text) ? ' ' : '') + value.trim();
-      if (heard.trim()) text += join(heard);
-      guess = guessing.trim() ? join(guessing) : '';
-      goal.value = text + guess;
-      grow();
-    },
-    onEnd: (error) => {
-      dictation = undefined;
-      mic.setAttribute('aria-pressed', 'false');
-      if (error === 'not-allowed') {
-        showError('Allow the microphone in the tab that just opened, then press the mic again.');
-        void chrome.tabs.create({ url: chrome.runtime.getURL('mic.html') });
-      } else if (error) {
-        showError(`Dictation stopped: ${error}.`);
-      }
-    },
-  });
-  if (dictation) { mic.setAttribute('aria-pressed', 'true'); showError(''); goal.focus(); }
+  if (dictation.toggle()) { showError(''); $<HTMLTextAreaElement>('goal').focus(); }
 }
 
 /** The composer grows with what is typed, up to its max height. */
@@ -1364,10 +1352,10 @@ $<HTMLInputElement>('file-input').onchange = (event) => {
   const input = event.target as HTMLInputElement;
   void addFiles([...(input.files ?? [])]).then(() => { input.value = ''; });
 };
-$('mic').hidden = !startDictation.supported();
-$('mic').dataset['tip'] = startDictation.describe();
+$('mic').hidden = !dictation.supported();
+$('mic').dataset['tip'] = dictation.describe();
 // Whether recognition runs on this device is known only after a moment: say it when the owner points at it.
-$('mic').addEventListener('mouseenter', () => { $('mic').dataset['tip'] = startDictation.describe(); });
+$('mic').addEventListener('mouseenter', () => { $('mic').dataset['tip'] = dictation.describe(); });
 $('mic').onclick = toggleDictation;
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape') { $('tab-menu').hidden = true; closeWhere(); closeModeMenu(); closeAddMenu(); closeSkillMenu(); closeMore(); $('goal').focus(); } });
 document.addEventListener('click', (event) => {

@@ -8,7 +8,7 @@
 /** Code that runs inside web pages (injected or as the content script). */
 const PAGE = '^src/executor/(content|tree|page|overlay)\\.ts$';
 /** The side panel and the extension's own pages. */
-const UI = '^src/(panel|connections-ui|composer|ui|share|dictation|export|markdown|welcome|viewer|mic|document)\\.ts$';
+const UI = '^src/(panel|connections-ui|composer|ui|share|dictation/[a-z-]+|export|markdown|welcome|viewer|mic|document)\\.ts$';
 
 module.exports = {
   forbidden: [
@@ -60,6 +60,13 @@ module.exports = {
       severity: 'error',
       from: { path: UI, pathNot: '\\.test\\.ts$' },
       to: { path: '^src/(loop/agent|controller|executor|scope|background)', dependencyTypesNot: ['type-only'] },
+    },
+    {
+      name: 'dictation-stands-alone',
+      comment: 'Dictation is self-contained, to be lifted into another extension as it is: it imports nothing of Valet.',
+      severity: 'error',
+      from: { path: '^src/dictation/' },
+      to: { path: '^src/', pathNot: '^src/dictation/' },
     },
     {
       name: 'tests-are-not-imported',
