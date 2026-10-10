@@ -13,13 +13,13 @@
     .hero .empty-mark { flex: none; width: 52px; height: 52px; margin-top: 2px; }
     .hero h1 { margin: 0; font-size: var(--v-fs-3xl); line-height: var(--v-lh-3xl); font-weight: 650; }
     .hero p { margin: 4px 0 0; font-size: var(--v-fs-md); }
-    .step { display: flex; gap: 14px; padding: 20px 22px; border: 1px solid var(--v-line); border-radius: var(--v-radius-xl); background: var(--v-surface-raised); box-shadow: var(--v-shadow-1); }
-    .step .n { flex: none; width: 26px; height: 26px; margin-top: 1px; border-radius: 50%; background: var(--v-accent-soft); color: var(--v-accent-text); display: grid; place-items: center; font-weight: 650; font-size: var(--v-fs-sm); }
-    .step .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
-    .step h2 { margin: 0; font-size: var(--v-fs-xl); line-height: var(--v-lh-xl); font-weight: 600; }
-    .step p { margin: 0; font-size: var(--v-fs-sm); line-height: 20px; }
-    .step .body > .row { margin-top: 2px; }
-    .step .sheet { margin-top: 4px; }
+    .guide-step { display: flex; gap: 14px; padding: 20px 22px; border: 1px solid var(--v-line); border-radius: var(--v-radius-xl); background: var(--v-surface-raised); box-shadow: var(--v-shadow-1); }
+    .guide-step .n { flex: none; width: 26px; height: 26px; margin-top: 1px; border-radius: 50%; background: var(--v-accent-soft); color: var(--v-accent-text); display: grid; place-items: center; font-weight: 650; font-size: var(--v-fs-sm); }
+    .guide-step .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+    .guide-step h2 { margin: 0; font-size: var(--v-fs-2xl); line-height: var(--v-lh-2xl); font-weight: 600; }
+    .guide-step p { margin: 0; font-size: var(--v-fs-md); line-height: 22px; color: var(--v-text-muted); }
+    .guide-step .body > .row { margin-top: 2px; }
+    .guide-step .sheet { margin-top: 4px; }
     .examples { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
     .examples li { display: flex; gap: 8px; align-items: baseline; padding: 8px 12px; border-radius: var(--v-radius-md); background: var(--v-surface-sunk); border: 1px solid var(--v-line); font-size: var(--v-fs-sm); }
     .examples li::before { content: "→"; color: var(--v-accent-text); }
@@ -40,7 +40,7 @@
       </div>
     </div>
 
-    <section class="step">
+    <section class="guide-step">
       <div class="n" aria-hidden="true">1</div>
       <div class="body">
         <h2>Open the side panel</h2>
@@ -52,7 +52,7 @@
       </div>
     </section>
 
-    <section class="step">
+    <section class="guide-step">
       <div class="n" aria-hidden="true">2</div>
       <div class="body">
         <h2>Connect a model</h2>
@@ -62,7 +62,7 @@
       </div>
     </section>
 
-    <section class="step">
+    <section class="guide-step">
       <div class="n" aria-hidden="true">3</div>
       <div class="body">
         <h2>Try a first task</h2>
