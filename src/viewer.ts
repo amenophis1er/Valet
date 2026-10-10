@@ -19,7 +19,7 @@ const temporary = params.get('temporary') === '1';
 const stored = (await chrome.storage.session.get(`${MEDIA_PREFIX}${id}`))[`${MEDIA_PREFIX}${id}`] as Media | undefined;
 $('name').textContent = name;
 document.title = `${name} — Valet`;
-if (!stored || stored.kind !== 'image') {
+if (stored?.kind !== 'image') {
   $('gone').hidden = false;
 } else {
   const blob = new Blob([Uint8Array.from(atob(stored.data), (char) => char.charCodeAt(0))], { type: stored.mediaType });

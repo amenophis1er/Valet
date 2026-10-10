@@ -122,6 +122,7 @@ npm run dev          # rebuild on save; the loaded extension reloads itself
 npm test             # unit tests (Vitest)
 npm run e2e          # end to end in Chromium (Playwright)
 npm run typecheck
+npm run lint         # Biome, and the layering rules in .dependency-cruiser.cjs
 npm run docs         # regenerate docs/actions.md from the action registry
 ```
 

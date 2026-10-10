@@ -49,6 +49,14 @@ flowchart LR
 | **Page side** (`executor/content.ts`, `page.ts`, `overlay.ts`) | Reading the page as an accessibility tree with refs; locating an element by ref; telling what a form would submit; the halo, cursor and step bubble. | Exist in the page's own world: it lives in the extension's isolated world, out of the page's reach. |
 | **Scope** (`scope/`) | Which sites the conversation may reach, and network rules that block the rest before a request leaves the browser. | Depend on the model behaving. |
 
+These boundaries are enforced, not just described: `npm run lint:deps`
+(dependency-cruiser, `.dependency-cruiser.cjs`) fails CI if the action
+registry reaches into the controller or the executor, if an input action
+imports anything of the executor but the driver, if code that runs in pages
+imports worker code, if the controller or the loop imports the executor's
+code (types are fine), if the panel imports agent logic, or if any import
+cycle appears.
+
 ## One action, start to finish
 
 Every tool call takes the same path through `RunController.run()`:

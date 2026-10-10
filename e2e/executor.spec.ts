@@ -304,7 +304,7 @@ test('a link that opens a new tab: the tab becomes the conversation\'s, and the 
     throw new Error('no tab was opened');
   })();
   expect(before).not.toContain(opened);
-  expect(await worker.evaluate(([s, id, opener]) => (globalThis as any).__valet.executor.claimOpened(id, opener), [session, opened, tabId] as const)).toBe(true);
+  expect(await worker.evaluate(([_s, id, opener]) => (globalThis as any).__valet.executor.claimOpened(id, opener), [session, opened, tabId] as const)).toBe(true);
   expect(await tabsOf()).toContain(opened);
   const next = (await run(session, { action: 'observe' }))['observation'];
   expect(next.url).toBe(`${fixture.main}/item/blue-mug`);

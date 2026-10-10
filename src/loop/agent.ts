@@ -580,7 +580,7 @@ export class AgentLoop {
   async draftSkill(options: { focus?: string; previous?: string } = {}): Promise<SkillDraft | { error: string }> {
     const s = this.#state;
     const goal = s.transcript.find((entry) => entry.kind === 'owner');
-    if (!goal || goal.kind !== 'owner' || s.status === 'running') return { error: s.status === 'running' ? 'Wait for the agent to finish first.' : 'There is no conversation to learn from yet.' };
+    if (goal?.kind !== 'owner' || s.status === 'running') return { error: s.status === 'running' ? 'Wait for the agent to finish first.' : 'There is no conversation to learn from yet.' };
     const connection = s.connection ?? await this.#deps.activeConnection();
     if (!connection) return { error: 'Add an AI connection in Settings first.' };
     // The sites it was about: the page handed over, the one it works in, and every page it read.
@@ -906,7 +906,7 @@ export class AgentLoop {
   #answerDangling(text: string): void {
     const history = this.#state.history;
     const lastAssistant = [...history].reverse().find((message) => message.role === 'assistant');
-    if (!lastAssistant || lastAssistant.role !== 'assistant' || !lastAssistant.toolCalls) return;
+    if (lastAssistant?.role !== 'assistant' || !lastAssistant.toolCalls) return;
     const answered = new Set(history.filter((message) => message.role === 'tool').map((message) => (message as { toolCallId: string }).toolCallId));
     for (const call of lastAssistant.toolCalls) {
       if (!answered.has(call.id)) this.#answer(call, { completed: 'unknown', error: text, notice: text }, true);

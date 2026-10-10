@@ -8,6 +8,7 @@ Valet is small and moves fast; issues and pull requests are welcome.
 npm install
 npm run dev        # builds dist/ and rebuilds on change; load dist/ unpacked
 npm run typecheck
+npm run lint       # Biome, and the architecture's layering rules
 npm test           # unit tests (vitest)
 npm run e2e        # Chromium end to end (playwright)
 npm run screenshots # every screen and state, light and dark, into screenshots/

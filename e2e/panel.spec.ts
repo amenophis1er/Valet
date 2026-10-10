@@ -174,7 +174,7 @@ test('runs a goal from the panel: the agent searches the shop and answers', asyn
   await panel.getByRole('button', { name: 'Allow once' }).click();
 
   await expect(panel.locator('.agent').last()).toHaveText('The blue mug costs $12.40.', { timeout: 30_000 });
-  await expect(panel.locator('.action')).toHaveText(['Opened ' + `${fixture.main}/shop`, /^Typed into (search|text)box "Search"$/, /^Pressed Enter on (search|text)box "Search"$/]);
+  await expect(panel.locator('.action')).toHaveText([`Opened ${fixture.main}/shop`, /^Typed into (search|text)box "Search"$/, /^Pressed Enter on (search|text)box "Search"$/]);
   // The three steps fold into one line: how many, and the latest.
   await expect(panel.locator('.activity > details > summary')).toHaveText(/^3 steps\s*Pressed Enter on (search|text)box "Search"$/);
   await expect(panel.locator('.activity .action').first()).toBeHidden();
@@ -599,7 +599,7 @@ test('approvals last for the conversation; Auto approves sites, never a form tha
 
   // 1. Allow once: nothing is sent before the answer, exactly one POST after.
   model.script(plan());
-  let panel = await runGoal('Order');
+  const panel = await runGoal('Order');
   await panel.getByRole('button', { name: 'Allow once' }).click(); // the site
   await expect(panel.locator('#card-text')).toContainText(`Submit this form ("Submit order") to ${fixture.main}/post (POST)`, { timeout: 30_000 });
   await expect(panel.locator('#card-text')).toContainText('Test User');

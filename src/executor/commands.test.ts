@@ -3,7 +3,7 @@
  * wrote instead. Chrome is a fake here; what is under test is which element a
  * command lands on and what it refuses.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, } from 'vitest';
 import { BrowserCommands, type FrameList, type Imaging, type Rect } from './commands.js';
 import type { WorkerChrome } from './chrome.js';
 import { Cancellation, CancelledError, PreconditionError, type Command } from './protocol.js';
@@ -961,7 +961,7 @@ describe('a tab a page opened by itself', () => {
 
 describe('a line break in a fill', () => {
   it('is refused for a one-line field before anything is touched: an Enter would submit without the approval a press gets', async () => {
-    const { commands, field, dispatched, located } = await opened();
+    const { commands, dispatched, located } = await opened();
     await commands.run(command('observe'));
     const before = located.length;
     const cancel = new Cancellation();

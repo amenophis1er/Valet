@@ -83,7 +83,7 @@ function recordEdit(element: Element): void {
 function resolve(ref: string): Element | null {
   const state = registry();
   const element = state.refs.get(ref)?.deref() ?? null;
-  if (!element || !element.isConnected) return null;
+  if (!element?.isConnected) return null;
   if (state.signatures.get(element) !== signature(element)) return null;
   return element;
 }
@@ -143,7 +143,8 @@ export interface PointHit { ok: boolean; reason?: string; ref?: string; role?: s
 const CONTROLS = 'button, a[href], input, select, textarea, summary, [role="button"], [role="link"], [role="menuitem"], [role="tab"], [role="checkbox"], [role="radio"], [role="switch"], [role="option"]';
 
 function tokenOf(state: Registry): string {
-  return (state.token ??= Math.random().toString(36).slice(2));
+  state.token ??= Math.random().toString(36).slice(2);
+  return state.token;
 }
 
 function pointAt(x: number, y: number): PointHit {

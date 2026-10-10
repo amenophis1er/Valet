@@ -38,7 +38,8 @@ export function readOrigin(): string {
  */
 export function listFrames(): { viewport: { width: number; height: number }; frames: Array<{ id: number; x: number; y: number; w: number; h: number; readable: boolean; origin: string | null; within?: number }> } {
   const holder = globalThis as unknown as { __valetFrameIds?: WeakMap<Element, number>; __valetFrameNext?: number };
-  const ids = (holder.__valetFrameIds ??= new WeakMap());
+  holder.__valetFrameIds ??= new WeakMap();
+  const ids = holder.__valetFrameIds;
   const dom = (globalThis as unknown as { chrome?: { dom?: { openOrClosedShadowRoot?(element: Element): ShadowRoot | null } } }).chrome?.dom;
   const frames: Array<{ id: number; x: number; y: number; w: number; h: number; readable: boolean; origin: string | null; within?: number }> = [];
   const rootsOf = (root: Document | ShadowRoot): Array<Document | ShadowRoot> => {

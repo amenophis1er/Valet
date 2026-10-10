@@ -7,7 +7,7 @@
 
 import type { Media, TranscriptEntry } from './loop/protocol.js';
 
-const escape = (text: string) => text.replace(/[&<>"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[char] ?? char));
+const escapeHtml = (text: string) => text.replace(/[&<>"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[char] ?? char));
 
 /** The whole conversation as Markdown: what was said, and the steps as a list under it. */
 export function conversationMarkdown(transcript: TranscriptEntry[], title = 'Valet conversation'): string {
@@ -41,8 +41,8 @@ export function conversationHtml(transcript: TranscriptEntry[], media: MediaLook
   const parts: string[] = [];
   const image = (id: string, alt: string) => {
     const stored = media(id);
-    if (!stored || stored.kind !== 'image') return `<p class="gone">${escape(alt)} (no longer kept)</p>`;
-    return `<img src="data:${stored.mediaType};base64,${stored.data}" alt="${escape(alt)}">`;
+    if (stored?.kind !== 'image') return `<p class="gone">${escapeHtml(alt)} (no longer kept)</p>`;
+    return `<img src="data:${stored.mediaType};base64,${stored.data}" alt="${escapeHtml(alt)}">`;
   };
   let steps: string[] = [];
   let actions = 0;
@@ -57,32 +57,32 @@ export function conversationHtml(transcript: TranscriptEntry[], media: MediaLook
     switch (entry.kind) {
       case 'owner': {
         const attachments = (entry.attachments ?? []).map((attachment) => attachment.id
-          ? image(attachment.id, attachment.name) : `<span class="chip">📎 ${escape(attachment.name)}</span>`).join('');
-        parts.push(`<div class="owner"><p>${escape(entry.text)}</p>${attachments ? `<div class="attachments">${attachments}</div>` : ''}</div>`);
+          ? image(attachment.id, attachment.name) : `<span class="chip">📎 ${escapeHtml(attachment.name)}</span>`).join('');
+        parts.push(`<div class="owner"><p>${escapeHtml(entry.text)}</p>${attachments ? `<div class="attachments">${attachments}</div>` : ''}</div>`);
         break;
       }
-      case 'agent': parts.push(`<div class="agent"><pre>${escape(entry.text)}</pre></div>`); break;
+      case 'agent': parts.push(`<div class="agent"><pre>${escapeHtml(entry.text)}</pre></div>`); break;
       case 'action': {
         const text = entry.outcome === 'ok' ? entry.text : `${entry.text} — ${entry.outcome}`;
         actions += 1;
-        steps.push(`<li class="${entry.outcome}">${escape(text)}${entry.detail ? `<small>${escape(entry.detail)}</small>` : ''}</li>`);
+        steps.push(`<li class="${entry.outcome}">${escapeHtml(text)}${entry.detail ? `<small>${escapeHtml(entry.detail)}</small>` : ''}</li>`);
         if (entry.image) { flush(); parts.push(`<figure>${image(entry.image.id, entry.text)}</figure>`); }
         break;
       }
       case 'file': {
         const stored = media(entry.id);
-        const body = stored?.kind === 'file' ? `<pre>${escape(stored.content)}</pre>`
-          : stored?.kind === 'pdf' ? `<p><a href="data:application/pdf;base64,${stored.data}" download="${escape(stored.name)}">Download ${escape(stored.name)}</a></p>`
+        const body = stored?.kind === 'file' ? `<pre>${escapeHtml(stored.content)}</pre>`
+          : stored?.kind === 'pdf' ? `<p><a href="data:application/pdf;base64,${stored.data}" download="${escapeHtml(stored.name)}">Download ${escapeHtml(stored.name)}</a></p>`
             : '<p class="gone">No longer kept.</p>';
-        parts.push(`<details class="file"><summary>📄 ${escape(entry.name)} (${entry.bytes} bytes)</summary>${body}</details>`);
+        parts.push(`<details class="file"><summary>📄 ${escapeHtml(entry.name)} (${entry.bytes} bytes)</summary>${body}</details>`);
         break;
       }
-      case 'notice': steps.push(`<li class="notice">${escape(entry.text)}</li>`); break;
+      case 'notice': steps.push(`<li class="notice">${escapeHtml(entry.text)}</li>`); break;
     }
   }
   flush();
   return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escape(title)}</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)}</title>
 <style>
   body { margin: 0 auto; max-width: 720px; padding: 24px 16px 48px; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: #17191c; background: #fff; }
   h1 { font-size: 18px; margin: 0 0 4px; } .when { color: #5d6368; font-size: 13px; margin: 0 0 20px; }
@@ -97,7 +97,7 @@ export function conversationHtml(transcript: TranscriptEntry[], media: MediaLook
   .file { border: 1px solid #dde3e4; border-radius: 10px; padding: 8px 12px; margin: 10px 0; } .gone { color: #5d6368; font-style: italic; }
   @media print { .steps { break-inside: avoid; } figure img { max-height: 90vh; } }
 </style></head><body>
-<h1>${escape(title)}</h1><p class="when">Saved ${new Date().toISOString().slice(0, 16).replace('T', ' ')} from Valet.</p>
+<h1>${escapeHtml(title)}</h1><p class="when">Saved ${new Date().toISOString().slice(0, 16).replace('T', ' ')} from Valet.</p>
 ${parts.join('\n')}
 </body></html>
 `;

@@ -33,7 +33,7 @@ function latestObservation(messages: Message[]): Observation | undefined {
 }
 
 function sse(chunks: unknown[]): string {
-  return chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join('') + 'data: [DONE]\n\n';
+  return `${chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join('')}data: [DONE]\n\n`;
 }
 
 export async function startModel(steps: Step[]): Promise<ScriptedModel> {

@@ -14,7 +14,7 @@ declare const chrome: { storage: { session: { get(key: string): Promise<Record<s
 
 const id = new URLSearchParams(location.search).get('id') ?? '';
 const stored = (await chrome.storage.session.get(`${MEDIA_PREFIX}${id}`))[`${MEDIA_PREFIX}${id}`] as Media | undefined;
-if (!stored || stored.kind !== 'file') {
+if (stored?.kind !== 'file') {
   document.getElementById('gone')!.hidden = false;
   document.documentElement.setAttribute(STATE_ATTRIBUTE, 'gone');
 } else {

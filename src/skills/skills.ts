@@ -162,7 +162,7 @@ export function importSkills(json: string, existing: Skill[]): { skills: Skill[]
   let replaced = 0;
   for (const raw of box.skills) {
     const skill = asSkill({ id: 'import', ...(raw as object) });
-    if (!skill || !skill.name.trim() || !skill.text.trim()) continue;
+    if (!skill?.name.trim() || !skill.text.trim()) continue;
     const index = merged.findIndex((known) => known.name.trim().toLowerCase() === skill.name.trim().toLowerCase());
     const stamped = { ...skill, id: index >= 0 ? merged[index]!.id : newSkillId(), updatedAt: Date.now() };
     if (index >= 0) { merged[index] = stamped; replaced += 1; } else { merged.push(stamped); added += 1; }

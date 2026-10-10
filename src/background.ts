@@ -45,7 +45,7 @@ declare const chrome: WorkerChrome & {
     id: string;
     getURL(path: string): string;
     onInstalled: { addListener(listener: (details: { reason: string }) => void): void };
-    onMessage: { addListener(listener: (message: { type?: string }, sender: { id?: string; tab?: { id?: number } }, respond: (response: unknown) => void) => boolean | void): void };
+    onMessage: { addListener(listener: (message: { type?: string }, sender: { id?: string; tab?: { id?: number } }, respond: (response: unknown) => void) => boolean | undefined): void };
     onConnect: { addListener(listener: (port: Port) => void): void };
   };
   storage: {
@@ -98,7 +98,7 @@ chrome.tabs.onCreated.addListener((tab) => {
 
 async function claimOpened(tabId: number, openerTabId: number): Promise<void> {
   const owner = ownerOf(openerTabId);
-  if (!owner || owner.loop.state.status !== 'running') return;
+  if (owner?.loop.state.status !== 'running') return;
   await executor.claimOpened(tabId, openerTabId).catch(() => false);
 }
 
@@ -237,7 +237,7 @@ function make(id: string): Conversation {
     activeConnection: async () => {
       const view = await aiView();
       const active = view.connections.find((connection) => connection.id === view.activeId);
-      return active && active.model ? { id: active.id, revision: active.revision, label: active.label, model: active.model } : null;
+      return active?.model ? { id: active.id, revision: active.revision, label: active.label, model: active.model } : null;
     },
     storage: {
       get: async () => (await chrome.storage.session.get(stateKey(id)))[stateKey(id)] as Persisted | undefined,
