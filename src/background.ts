@@ -123,6 +123,17 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     respond(undefined);
     return;
   }
+  // Stop, from the same bubble: as the panel's Stop, for the conversation working in that tab.
+  if (message?.type === 'agent:stop') {
+    if (sender.id === chrome.runtime.id) {
+      void ready.then(() => {
+        const owner = sender.tab?.id !== undefined ? ownerOf(sender.tab.id) : undefined;
+        if (owner) void owner.loop.stop();
+      });
+    }
+    respond(undefined);
+    return;
+  }
   return handleAi(message, respond);
 });
 

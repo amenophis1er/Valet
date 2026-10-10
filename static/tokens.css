@@ -1,0 +1,159 @@
+/* Valet design tokens.
+ * Light is the default; dark follows the system unless data-theme pins it.
+ * .v-light / .v-dark scope a subtree to one theme (used by the demo). */
+
+:root,
+.v-light,
+.v-dark {
+  /* Type: system stack only, no web fonts */
+  --v-font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Helvetica Neue", sans-serif;
+  --v-font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --v-fs-2xs: 11px; --v-lh-2xs: 14px;
+  --v-fs-xs: 12px;  --v-lh-xs: 16px;
+  --v-fs-sm: 13px;  --v-lh-sm: 18px;
+  --v-fs-md: 14px;  --v-lh-md: 20px;
+  --v-fs-lg: 15px;  --v-lh-lg: 24px;
+  --v-fs-xl: 17px;  --v-lh-xl: 24px;
+  --v-fs-2xl: 20px; --v-lh-2xl: 28px;
+  --v-fs-3xl: 28px; --v-lh-3xl: 34px;
+
+  /* Space */
+  --v-space-1: 4px;  --v-space-2: 8px;  --v-space-3: 12px;
+  --v-space-4: 16px; --v-space-5: 20px; --v-space-6: 24px;
+  --v-space-8: 32px; --v-space-10: 40px; --v-space-12: 48px;
+  --v-hit-min: 44px;
+
+  /* Radius */
+  --v-radius-xs: 6px;  --v-radius-sm: 8px;  --v-radius-md: 10px;
+  --v-radius-lg: 12px; --v-radius-xl: 14px; --v-radius-pill: 999px;
+
+  /* Motion */
+  --v-dur-fast: 120ms; --v-dur-base: 180ms; --v-dur-slow: 260ms; --v-dur-enter: 320ms;
+  --v-ease-out: cubic-bezier(.2, .8, .2, 1);
+  --v-ease-in-out: cubic-bezier(.45, 0, .2, 1);
+  --v-spin-period: 900ms;
+  --v-dots-period: 1200ms; --v-dots-stagger: 160ms;
+  --v-halo-period: 2400ms;
+
+  /* Overlay: identical in both themes */
+  --v-halo: #7C5CF0;
+  --v-halo-glow: rgba(124, 92, 240, .24);
+  --v-halo-glow-peak: rgba(124, 92, 240, .42);
+  --v-cursor: #6A48E6;
+  --v-cursor-label: #5A3BC9;
+}
+
+/* Light */
+:root,
+.v-light,
+[data-theme="light"] {
+  color-scheme: light;
+  --v-bg: #F6F5FA;
+  --v-surface: rgba(255, 255, 255, .66);
+  --v-surface-raised: #FFFFFF;
+  --v-surface-sunk: #EEECF4;
+  --v-surface-hover: #F2F0F8;
+  --v-text: #1B1924;
+  --v-text-muted: #5D5970;
+  --v-text-faint: #686479;
+  --v-line: #E3E0EB;
+  --v-line-strong: #CDC8DA;
+  --v-line-control: #8F8AA0;
+  --v-accent: #6544D6;
+  --v-accent-hover: #5737C2;
+  --v-accent-press: #4A2DAA;
+  --v-accent-text: #5A3BC9;
+  --v-accent-soft: #EEE9FD;
+  --v-accent-line: #D3C7F7;
+  --v-on-accent: #FFFFFF;
+  --v-focus: #6544D6;
+  --v-ok: #1D7A55;      --v-ok-soft: #E2F2EA;
+  --v-warn: #9A5408;    --v-warn-dot: #C47A14;
+  --v-warn-soft: #FCF0DC; --v-warn-line: #E9C185;
+  --v-danger: #BE2E3B;  --v-danger-soft: #FBE6E8; --v-danger-line: #EFB4BA;
+  --v-info: #225FB0;    --v-info-soft: #E3EDFA;
+  --v-scrim: rgba(22, 18, 38, .45);
+  --v-blob-1: rgba(128, 98, 240, .30);
+  --v-blob-2: rgba(168, 146, 250, .24);
+  --v-blob-3: rgba(246, 184, 146, .26);
+  --v-blob-4: rgba(116, 156, 240, .14);
+  --v-shadow-1: 0 1px 2px rgba(35, 22, 80, .06);
+  --v-shadow-2: 0 12px 28px -10px rgba(40, 24, 100, .24), 0 2px 6px rgba(40, 24, 100, .07);
+  --v-shadow-3: 0 18px 44px -12px rgba(30, 18, 80, .34), 0 3px 10px rgba(30, 18, 80, .12);
+}
+
+/* Dark: values shared by the media query and the explicit scopes */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --v-bg: #121118;
+    --v-surface: rgba(29, 27, 38, .62);
+    --v-surface-raised: #1D1B26;
+    --v-surface-sunk: #17161E;
+    --v-surface-hover: #272535;
+    --v-text: #ECEAF3;
+    --v-text-muted: #A9A4BB;
+    --v-text-faint: #8E89A2;
+    --v-line: #2D2A3A;
+    --v-line-strong: #403C52;
+    --v-line-control: #6E6982;
+    --v-accent: #A08AFF;
+    --v-accent-hover: #B19EFF;
+    --v-accent-press: #8F77F5;
+    --v-accent-text: #B7A6FF;
+    --v-accent-soft: #2A2545;
+    --v-accent-line: #4A3F80;
+    --v-on-accent: #160F2E;
+    --v-focus: #B7A6FF;
+    --v-ok: #4FC79A;      --v-ok-soft: #173229;
+    --v-warn: #F2B35B;    --v-warn-dot: #F2B35B;
+    --v-warn-soft: #33261A; --v-warn-line: #6E4F22;
+    --v-danger: #FF8089;  --v-danger-soft: #3A1C22; --v-danger-line: #73343C;
+    --v-info: #7AAEF7;    --v-info-soft: #1A2740;
+    --v-scrim: rgba(6, 5, 12, .6);
+    --v-blob-1: rgba(120, 90, 240, .20);
+    --v-blob-2: rgba(92, 72, 200, .16);
+    --v-blob-3: rgba(230, 150, 110, .07);
+    --v-blob-4: rgba(80, 120, 220, .08);
+    --v-shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+    --v-shadow-2: 0 14px 32px -10px rgba(0, 0, 0, .6), 0 2px 6px rgba(0, 0, 0, .35);
+    --v-shadow-3: 0 20px 48px -12px rgba(0, 0, 0, .7), 0 3px 10px rgba(0, 0, 0, .4);
+  }
+}
+
+.v-dark,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --v-bg: #121118;
+  --v-surface: rgba(29, 27, 38, .62);
+  --v-surface-raised: #1D1B26;
+  --v-surface-sunk: #17161E;
+  --v-surface-hover: #272535;
+  --v-text: #ECEAF3;
+  --v-text-muted: #A9A4BB;
+  --v-text-faint: #8E89A2;
+  --v-line: #2D2A3A;
+  --v-line-strong: #403C52;
+  --v-line-control: #6E6982;
+  --v-accent: #A08AFF;
+  --v-accent-hover: #B19EFF;
+  --v-accent-press: #8F77F5;
+  --v-accent-text: #B7A6FF;
+  --v-accent-soft: #2A2545;
+  --v-accent-line: #4A3F80;
+  --v-on-accent: #160F2E;
+  --v-focus: #B7A6FF;
+  --v-ok: #4FC79A;      --v-ok-soft: #173229;
+  --v-warn: #F2B35B;    --v-warn-dot: #F2B35B;
+  --v-warn-soft: #33261A; --v-warn-line: #6E4F22;
+  --v-danger: #FF8089;  --v-danger-soft: #3A1C22; --v-danger-line: #73343C;
+  --v-info: #7AAEF7;    --v-info-soft: #1A2740;
+  --v-scrim: rgba(6, 5, 12, .6);
+  --v-blob-1: rgba(120, 90, 240, .20);
+  --v-blob-2: rgba(92, 72, 200, .16);
+  --v-blob-3: rgba(230, 150, 110, .07);
+  --v-blob-4: rgba(80, 120, 220, .08);
+  --v-shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+  --v-shadow-2: 0 14px 32px -10px rgba(0, 0, 0, .6), 0 2px 6px rgba(0, 0, 0, .35);
+  --v-shadow-3: 0 20px 48px -12px rgba(0, 0, 0, .7), 0 3px 10px rgba(0, 0, 0, .4);
+}

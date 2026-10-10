@@ -4,16 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Valet</title>
+  <link rel="stylesheet" href="tokens.css">
   <link rel="stylesheet" href="panel.css">
 </head>
 <body>
   <header class="bar">
-    <span id="connection" class="chip" title="The model this run uses">No connection</span>
+    <button id="model" class="model" title="The model this run uses. Click to change it in Settings.">
+      <span class="dot" aria-hidden="true"></span><span id="connection">No connection</span>
+      <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5" /></svg>
+    </button>
     <button id="new-conversation" class="icon" aria-label="New conversation" title="New conversation">
-      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12" /></svg>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4.5H6.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V13" /><path d="M17.6 3.9a1.9 1.9 0 0 1 2.7 2.7l-7.7 7.7-3.4.7.7-3.4z" /></svg>
     </button>
     <button id="more" class="icon" aria-label="More" title="Copy or save the conversation" aria-haspopup="menu" aria-expanded="false">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="12" cy="19" r="1.2" /></svg>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="12" r="1.4" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" /><circle cx="18.5" cy="12" r="1.4" fill="currentColor" stroke="none" /></svg>
     </button>
     <div id="more-menu" class="menu top-menu" role="menu" aria-label="Conversation" hidden>
       <button role="menuitem" id="menu-save-skill"><span class="title">Save as skill</span><small>A note from this conversation the agent reads next time</small></button>
@@ -21,8 +25,7 @@
       <button role="menuitem" id="save-conversation"><span class="title">Save as HTML</span><small>One file with the screenshots, any length; print it if you like</small></button>
     </div>
     <button id="open-settings" class="icon" aria-label="Settings" title="Settings">
-      <!-- Gear: Lucide "settings" icon, ISC license. -->
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></svg>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><circle cx="15" cy="7" r="2" /><circle cx="9" cy="17" r="2" /></svg>
     </button>
   </header>
 
@@ -30,14 +33,13 @@
     <ol id="transcript" class="transcript"></ol>
     <div id="announce" class="sr-only" aria-live="polite"></div>
     <div id="empty" class="empty">
-      <div class="empty-mark" aria-hidden="true">
-        <svg viewBox="0 0 22 22"><path d="M2 2 L2 18 L7 13.5 L10.5 20 L13.5 18.5 L10 12 L17 12 Z" /></svg>
-      </div>
+      <svg class="empty-mark" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5.4" /><path d="M6.6 5.9 18.3 11.1 12.9 12.9 11.1 18.3Z" /></svg>
       <p class="empty-title">What should I do on this page?</p>
-      <p class="muted">I work in the tab you're on while you watch — it gets a glowing border and my cursor. Stop takes it back.</p>
+      <p class="muted">I work in this tab while you watch: you'll see a glowing border and my cursor. Stop takes it back at any time.</p>
     </div>
     <footer class="composer">
       <div id="card" class="card" role="alertdialog" aria-labelledby="card-text" hidden>
+        <p class="card-head"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l7 2.8v5.2c0 4.3-3 7.6-7 9-4-1.4-7-4.7-7-9V6.3z" /></svg>Waiting for your OK</p>
         <p id="card-text"></p>
         <div class="row">
           <button id="card-once" class="primary">Allow once</button>
@@ -54,34 +56,34 @@
       <div id="status" class="status" hidden></div>
       <div id="composer-error" class="composer-error" role="status" hidden></div>
       <div class="box" id="box">
+        <div id="tab" class="tab-chip">
+          <button id="where" class="where" aria-haspopup="menu" aria-expanded="false" aria-label="Where the agent works" data-tip="Where the agent works">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2" /><path d="M3.5 9h17" /></svg><span id="where-label" class="where-label">Will work in:</span><span id="tab-title" class="tab-title">…</span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5" /></svg>
+          </button>
+        </div>
         <div id="attachments" class="attachments" hidden></div>
         <div id="skill-chips" class="skill-chips" hidden></div>
-        <textarea id="goal" rows="1" placeholder="Ask me to do something on this page… (@ for a skill)"></textarea>
+        <textarea id="goal" rows="1" placeholder="Tell me what to do here. Type @ for a skill."></textarea>
         <div class="box-row">
-          <!-- Every control says what it is on hover (data-tip). Plus, mic, cap, window and arrow: Lucide icons, ISC license. -->
+          <!-- Every control says what it is on hover (data-tip). Icons from the Valet design system. -->
           <div class="tools">
             <button id="add" class="icon" aria-label="Add to the message" data-tip="Add files or a screenshot" aria-haspopup="menu" aria-expanded="false">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 8.5v7M8.5 12h7" /></svg>
             </button>
             <button id="mic" class="icon" aria-label="Dictate" aria-pressed="false" hidden>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><path d="M12 19v3" /></svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3.5" width="6" height="10.5" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5v3" /></svg>
             </button>
             <input id="file-input" type="file" multiple hidden>
-            <button id="mode" class="mode" aria-haspopup="menu" aria-expanded="false" data-tip="Approvals: when the agent asks you">Ask<span class="caret" aria-hidden="true">▾</span></button>
+            <button id="mode" class="mode" aria-haspopup="menu" aria-expanded="false" data-tip="Approvals: when the agent asks you">Ask<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5" /></svg></button>
             <button id="learn" class="icon learn" aria-label="Learn" aria-pressed="false" data-tip="Learn: before each step the agent points at where it will go, says what it will do and why, and waits for you">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z" /><path d="M22 10v6" /><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5" /></svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5.5v13l9-6.5z" /><path d="M18.5 5.5v13" /></svg>
             </button>
           </div>
-          <div id="tab" class="tab-chip">
-            <button id="where" class="where" aria-haspopup="menu" aria-expanded="false" aria-label="Where the agent works" data-tip="Where the agent works">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2" /><path d="M10 4v4" /><path d="M2 8h20" /><path d="M6 4v4" /></svg>
-              <span id="tab-title" class="tab-title">…</span><span class="caret" aria-hidden="true">▾</span>
-            </button>
-          </div>
+          <span class="spacer"></span>
           <button id="resume" hidden>Resume</button>
           <button id="stop" class="stop" hidden>Stop</button>
           <button id="send" class="icon send" aria-label="Send" data-tip="Send">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 7-7 7 7" /><path d="M12 19V5" /></svg>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5.5M6.5 11 12 5.5l5.5 5.5" /></svg>
           </button>
         </div>
         <div id="add-menu" class="menu" role="menu" aria-label="Add to the message" hidden>
@@ -115,7 +117,7 @@
   <section id="settings-view" class="view" hidden>
     <header class="settings-head">
       <button id="close-settings" class="icon" aria-label="Back" title="Back to the conversation">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6" /></svg>
       </button>
       <h2>Settings</h2>
     </header>

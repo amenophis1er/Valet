@@ -1,6 +1,6 @@
 Valet
+Copyright 2026 Amen
 
-The Settings, paperclip, camera and mic icons in static/panel.html are from Lucide
-(https://lucide.dev), ISC License, Copyright (c) for portions of Lucide are
-held by Cole Bemis 2013-2022 as part of Feather (MIT); all other copyright (c)
-for Lucide are held by Lucide Contributors 2022.
+This product includes software developed by its author and released under
+the Apache License 2.0 (see LICENSE). The icons and design tokens come from
+the Valet design system and are part of this product.

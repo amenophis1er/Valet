@@ -157,6 +157,7 @@ function renderTab(): void {
     tip = 'This page cannot be used; the agent will open its own tab.';
   }
   // The sentence is the label on hover and the button's name, so a screen reader hears where the agent will work.
+  $('where-label').textContent = running ? 'Working in:' : choice === 'continue' ? 'Will continue in:' : 'Will work in:';
   where.dataset['tip'] = tip;
   where.setAttribute('aria-label', tip);
   where.classList.toggle('hand', !running && choice === 'this');
@@ -435,7 +436,7 @@ function render(): void {
     status.textContent = `Paused: ${state.pauseReason ?? ''}`;
   }
   // During a run, the connection the run pinned; otherwise the one Settings has active.
-  if (state.connection && state.status !== 'idle') $('connection').textContent = `${state.connection.label} · ${state.connection.model}`;
+  if (state.connection && state.status !== 'idle') showConnection(state.connection);
   else void renderActiveConnection();
 
   renderCard();
@@ -643,7 +644,20 @@ function chooseMode(mode: 'ask' | 'auto'): void {
 async function renderActiveConnection(): Promise<void> {
   const view = await ai.get();
   const active = view.connections.find((connection) => connection.id === view.activeId);
-  $('connection').textContent = active ? `${active.label} · ${active.model || 'pick a model in Settings'}` : 'No connection';
+  showConnection(active ? { label: active.label, model: active.model || 'Pick a model' } : null);
+}
+
+/** The model chip: the connection muted, the model in bold, a dot that says whether there is one. */
+function showConnection(connection: { label: string; model: string } | null): void {
+  const chip = $('connection');
+  $('model').classList.toggle('none', !connection);
+  if (!connection) { chip.textContent = 'No model yet · Add one'; return; }
+  const label = document.createElement('span');
+  label.className = 'conn';
+  label.textContent = `${connection.label} · `;
+  const model = document.createElement('b');
+  model.textContent = connection.model;
+  chip.replaceChildren(label, model);
 }
 
 function submit(): void {
@@ -922,8 +936,8 @@ async function copyText(text: string): Promise<boolean> {
   try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
 }
 
-const COPY_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg>';
-const CHECK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg>';
+const COPY_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2" /><path d="M15.5 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2h2.5" /></svg>';
+const CHECK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>';
 
 /** A small copy icon on an answer (no text of its own, so the answer reads the same with it), a check for a moment once copied. */
 function copyButton(text: string): HTMLButtonElement {
@@ -1242,7 +1256,7 @@ function skillRow(skill: Skill): HTMLLIElement {
   return row;
 }
 
-const PENCIL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>';
+const PENCIL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 4.5l4 4L9 19H5v-4z" /></svg>';
 
 /** The skill being edited in the form, or a new one (empty id). */
 let editing: Skill | undefined;
@@ -1410,6 +1424,7 @@ $('where-continue').onclick = () => chooseWhere('continue');
 $('where-here').onclick = () => chooseWhere('this');
 $('where-new').onclick = () => chooseWhere('new');
 $('open-settings').onclick = () => showSettings(true);
+$('model').onclick = () => showSettings(true);
 $('close-settings').onclick = () => showSettings(false);
 $('mode').onclick = toggleModeMenu;
 $('mode-ask').onclick = () => chooseMode('ask');

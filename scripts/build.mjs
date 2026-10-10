@@ -28,7 +28,7 @@ export const BUNDLES = [
   { entry: 'src/document.ts', out: 'document.js', format: 'esm' },
   { entry: 'src/welcome.ts', out: 'welcome.js', format: 'esm' },
 ];
-export const STATIC = ['manifest.json', 'panel.html', 'panel.css', 'mic.html', 'viewer.html', 'document.html', 'welcome.html'];
+export const STATIC = ['manifest.json', 'panel.html', 'tokens.css', 'panel.css', 'mic.html', 'viewer.html', 'document.html', 'welcome.html'];
 
 /** The dev build's id, written into the bundles after they are hashed (see below). */
 const DEV_ID_PLACEHOLDER = '__DEV_ID_PLACEHOLDER__';

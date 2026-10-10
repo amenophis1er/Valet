@@ -160,5 +160,4 @@ Please report vulnerabilities privately — see [SECURITY.md](SECURITY.md).
 
 ## License
 
-[Apache-2.0](LICENSE). Icons from [Lucide](https://lucide.dev) (ISC); see
-[NOTICE](NOTICE).
+[Apache-2.0](LICENSE). See [NOTICE](NOTICE).

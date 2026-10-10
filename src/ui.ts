@@ -1,6 +1,6 @@
 /* Small pieces shared by the extension's pages. */
 
-export const TRASH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>';
+export const TRASH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5" /></svg>';
 
 export function iconButton(svg: string, label: string, onclick: () => void, extra = ''): HTMLButtonElement {
   const button = document.createElement('button');

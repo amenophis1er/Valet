@@ -4,37 +4,39 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Welcome to Valet</title>
+  <link rel="stylesheet" href="tokens.css">
   <link rel="stylesheet" href="panel.css">
   <style>
     body { height: auto; min-height: 100vh; display: block; }
-    main { max-width: 640px; margin: 0 auto; padding: 40px 20px 60px; display: flex; flex-direction: column; gap: 18px; }
-    .hero { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
-    .hero .empty-mark { margin: 0; width: 52px; height: 52px; border-radius: 14px; }
-    .hero .empty-mark svg { width: 26px; height: 26px; }
-    .hero h1 { margin: 0; font-size: 24px; }
-    .hero p { margin: 2px 0 0; }
-    .step { display: flex; gap: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
-    .step .n { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--accent-fg); display: grid; place-items: center; font-weight: 700; font-size: 14px; }
-    .step .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-    .step h2 { margin: 0; font-size: 16px; }
-    .step p { margin: 0; }
+    main { max-width: 640px; margin: 0 auto; padding: 48px 20px 64px; display: flex; flex-direction: column; gap: 16px; }
+    .hero { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 8px; }
+    .hero .empty-mark { flex: none; width: 52px; height: 52px; margin-top: 2px; }
+    .hero h1 { margin: 0; font-size: var(--v-fs-3xl); line-height: var(--v-lh-3xl); font-weight: 650; }
+    .hero p { margin: 4px 0 0; font-size: var(--v-fs-md); }
+    .step { display: flex; gap: 14px; padding: 20px 22px; border: 1px solid var(--v-line); border-radius: var(--v-radius-xl); background: var(--v-surface-raised); box-shadow: var(--v-shadow-1); }
+    .step .n { flex: none; width: 26px; height: 26px; margin-top: 1px; border-radius: 50%; background: var(--v-accent-soft); color: var(--v-accent-text); display: grid; place-items: center; font-weight: 650; font-size: var(--v-fs-sm); }
+    .step .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+    .step h2 { margin: 0; font-size: var(--v-fs-xl); line-height: var(--v-lh-xl); font-weight: 600; }
+    .step p { margin: 0; font-size: var(--v-fs-sm); line-height: 20px; }
+    .step .body > .row { margin-top: 2px; }
     .step .sheet { margin-top: 4px; }
-    .examples { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
-    .examples li { color: var(--fg); }
-    .examples code { font-family: inherit; font-size: inherit; background: var(--soft); padding: 2px 6px; border-radius: 6px; }
-    .ready { font-size: 13px; }
-    .ready.ok { color: var(--ok); font-weight: 600; }
-    .foot { text-align: center; font-size: 12.5px; }
-    kbd { font: inherit; background: var(--soft); border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; }
+    .examples { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .examples li { display: flex; gap: 8px; align-items: baseline; padding: 8px 12px; border-radius: var(--v-radius-md); background: var(--v-surface-sunk); border: 1px solid var(--v-line); font-size: var(--v-fs-sm); }
+    .examples li::before { content: "→"; color: var(--v-accent-text); }
+    .examples code { font-family: inherit; font-size: inherit; background: none; padding: 0; }
+    .ready { font-size: var(--v-fs-xs); }
+    .ready.ok { color: var(--v-ok); font-weight: 600; }
+    .foot { text-align: center; font-size: var(--v-fs-xs); }
+    kbd { font: inherit; font-family: var(--v-font-mono); font-size: var(--v-fs-xs); background: var(--v-surface-sunk); border: 1px solid var(--v-line); border-radius: var(--v-radius-xs); padding: 0 5px; }
   </style>
 </head>
 <body>
   <main>
     <div class="hero">
-      <div class="empty-mark" aria-hidden="true"><svg viewBox="0 0 22 22"><path d="M2 2 L2 18 L7 13.5 L10.5 20 L13.5 18.5 L10 12 L17 12 Z" fill="#fff" /></svg></div>
+      <svg class="empty-mark" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5.4" /><path d="M6.6 5.9 18.3 11.1 12.9 12.9 11.1 18.3Z" /></svg>
       <div>
         <h1>Welcome to Valet</h1>
-        <p class="muted">An AI agent that works in your own Chrome, with the model you bring. Three things and you're set.</p>
+        <p class="muted">An assistant that works in your own Chrome, on the model you bring. Three steps and you're set.</p>
       </div>
     </div>
 

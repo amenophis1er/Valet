@@ -4,19 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Valet — image</title>
+  <link rel="stylesheet" href="tokens.css">
   <style>
-    :root { color-scheme: dark; }
     * { box-sizing: border-box; }
-    html, body { margin: 0; height: 100%; background: #111314; color: #e8eaed; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    html, body { margin: 0; height: 100%; background: var(--v-surface-sunk); color: var(--v-text); font-family: var(--v-font); font-size: var(--v-fs-sm); line-height: var(--v-lh-sm); -webkit-font-smoothing: antialiased; }
     body { display: flex; flex-direction: column; }
-    header { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid #2d3134; }
-    #name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #9aa0a6; }
-    button { font: inherit; padding: 6px 14px; border-radius: 10px; border: 1px solid #2dd4bf; background: #2dd4bf; color: #062a26; font-weight: 600; cursor: pointer; }
-    main { flex: 1; min-height: 0; display: grid; place-items: center; padding: 12px; overflow: auto; }
+    header { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 12px 0 14px; border-bottom: 1px solid var(--v-line); background: var(--v-surface-raised); }
+    header::before { content: ""; width: 18px; height: 18px; flex: none; border-radius: 4px; background: #6544D6 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 3.5 12.6 7.4 8.7 8.7 7.4 12.6Z' fill='white' stroke='white' stroke-width='1.1' stroke-linejoin='round'/%3E%3C/svg%3E") center / 18px no-repeat; }
+    #name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+    button { appearance: none; display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; border-radius: var(--v-radius-md); border: 1px solid var(--v-accent); background: var(--v-accent); color: var(--v-on-accent); font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { background: var(--v-accent-hover); }
+    button:focus-visible { outline: 2px solid var(--v-focus); outline-offset: 2px; }
+    main { flex: 1; min-height: 0; display: grid; place-items: center; padding: 24px; overflow: auto; }
     main.actual { place-items: start; }
-    img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; cursor: zoom-in; }
+    img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: var(--v-radius-md); background: #fff; box-shadow: var(--v-shadow-3), 0 0 0 1px var(--v-line); cursor: zoom-in; }
     main.actual img { max-width: none; max-height: none; cursor: zoom-out; }
-    #gone { color: #9aa0a6; }
+    #gone { color: var(--v-text-muted); }
   </style>
 </head>
 <body>
