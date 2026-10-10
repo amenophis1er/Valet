@@ -326,3 +326,19 @@ test('double-clicks and right-clicks: a page sees dblclick and contextmenu', asy
   expect(double, JSON.stringify(double).slice(0, 300)).toMatchObject({ completed: true });
   await expect(page.locator('#opened')).toHaveText('opened by double-click');
 });
+
+test('a page that rewrites its own URL keeps its refs; a reload does not', async () => {
+  let observation = (await run('s-spa', { action: 'navigate', url: `${fixture.main}/slider?t=spa` }))['observation'];
+  const page = context.pages().find((p) => p.url() === `${fixture.main}/slider?t=spa`)!;
+  // As Google Maps does as its map settles: same document, a new path.
+  await page.evaluate(() => history.replaceState(null, '', '/maps/place/Somewhere/@48.858,2.294,17z'));
+  const file = observation.targets.find((target: { name: string }) => target.name === 'report.pdf');
+  const clicked = await run('s-spa', { action: 'click', observation: observation.id, target: { ref: file.ref }, count: 2 });
+  expect(clicked, JSON.stringify(clicked).slice(0, 300)).toMatchObject({ completed: true });
+  await expect(page.locator('#opened')).toHaveText('opened by double-click');
+  observation = clicked['observation'];
+  const again = observation.targets.find((target: { name: string }) => target.name === 'report.pdf');
+  await page.reload();
+  const refused = await run('s-spa', { action: 'click', observation: observation.id, target: { ref: again.ref } });
+  expect(refused, JSON.stringify(refused).slice(0, 300)).toMatchObject({ refused: expect.stringMatching(/changed since that observation|Stale/) });
+});

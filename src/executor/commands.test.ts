@@ -432,6 +432,44 @@ describe('what a ref is bound to', () => {
     expect(dispatched.length).toBeGreaterThan(0);
   });
 
+  /** Chrome's view of the main frame's document, as webNavigation.getFrame reports it. */
+  function withDocument(fake: { chrome: unknown }, current: { documentId: string }) {
+    (fake.chrome as { webNavigation: unknown }).webNavigation = {
+      async getAllFrames() { return null; },
+      async getFrame() { return { url: '', documentId: current.documentId }; },
+    };
+  }
+
+  it('still acts when the page rewrote its own URL: the observed document is still there (Google Maps)', async () => {
+    const h = await opened();
+    withDocument(h, { documentId: 'doc-0' });
+    await h.commands.run(command('observe'));
+    [...h.tabs.values()][0]!.url = 'https://example.test/maps/place/Eiffel+Tower/@48.858,2.294,17z/data=!4m6';
+    await h.commands.run(command('click', { target: { ref: 'e1' } }));
+    await h.commands.run(command('scroll', { direction: 'down' }));
+    expect(h.dispatched.length).toBeGreaterThan(0);
+  });
+
+  it('refuses once a new document is loaded, even at the same URL (a reload)', async () => {
+    const h = await opened();
+    const current = { documentId: 'doc-0' };
+    withDocument(h, current);
+    await h.commands.run(command('observe'));
+    current.documentId = 'doc-reloaded';
+    await expect(h.commands.run(command('click', { target: { ref: 'e1' } }))).rejects.toThrow(/has changed since that observation/);
+    await expect(h.commands.run(command('scroll', { direction: 'down' }))).rejects.toThrow(/has changed since that observation/);
+    expect(h.dispatched).toEqual([]);
+  });
+
+  it('refuses a same-document URL on another origin, which no page can make by itself', async () => {
+    const h = await opened();
+    withDocument(h, { documentId: 'doc-0' });
+    await h.commands.run(command('observe'));
+    [...h.tabs.values()][0]!.url = 'https://elsewhere.test/';
+    await expect(h.commands.run(command('click', { target: { ref: 'e1' } }))).rejects.toThrow(/has changed since that observation/);
+    expect(h.dispatched).toEqual([]);
+  });
+
   it('refuses a scroll before the first observation', async () => {
     const { commands } = await opened();
     await expect(commands.run(command('scroll', { direction: 'down' }))).rejects.toThrow(/Stale page observation/);

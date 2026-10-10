@@ -29,6 +29,8 @@ export interface ChromeLike {
   /** The frames of a tab, to inject into the page's own and never another extension's. Absent in tests: every frame then. */
   webNavigation?: {
     getAllFrames(details: { tabId: number }): Promise<Array<{ frameId: number; parentFrameId: number; url: string; documentId?: string }> | null>;
+    /** One frame's current document: whether the main frame still holds the document that was observed. */
+    getFrame?(details: { tabId: number; frameId: number }): Promise<{ url: string; documentId?: string } | null>;
   };
   /** Only to answer one question: is the owner looking at this tab right now? */
   windows: {

@@ -42,8 +42,8 @@ interface Session {
   groupedOwnerTab?: number;
   /** Bumped by every observation, so a ref from an older one is recognisable. */
   generation: number;
-  /** The tab and page the last observation described. */
-  observed?: { generation: number; tabKey: string; url: string };
+  /** The tab and page the last observation described: its main frame's URL, and its document when Chrome named it. */
+  observed?: { generation: number; tabKey: string; url: string; documentId?: string };
 }
 
 /** One frame of an observation, for the run controller (redaction, scope). Never shown to the model. */
@@ -103,6 +103,11 @@ function checkUrl(url: string): string {
 }
 
 /** A URL as the "same page" check compares it: through one parser, without the fragment, which a page changes without leaving its document (maps, hash routers). */
+/** scheme://host:port of a URL, or the URL itself when it does not parse. */
+function originOf(url: string): string {
+  try { return new URL(url).origin; } catch { return url; }
+}
+
 function normalize(url: string): string {
   try { const parsed = new URL(url); parsed.hash = ''; return parsed.toString(); } catch { return url; }
 }
@@ -277,7 +282,7 @@ export class BrowserCommands implements Executor {
     const observed = session.observed;
     if (!observed || observed.generation !== session.generation) throw new PreconditionError('Stale page observation. Observe again before scrolling.');
     const tab = await this.#ownTab(session, observed.tabKey);
-    if (this.#liveUrl(tab) !== observed.url) throw new PreconditionError(MOVED);
+    await this.#onObservedPage(tab, observed.url, observed.documentId);
     return tab.id!;
   }
 
@@ -405,7 +410,7 @@ export class BrowserCommands implements Executor {
     const tab = await this.#ownTab(session, key);
     const observed = session.observed;
     if (!observed || observed.generation !== session.generation || observed.tabKey !== key) throw new PreconditionError(STALE);
-    if (this.#liveUrl(tab) !== observed.url) throw new PreconditionError(MOVED);
+    await this.#onObservedPage(tab, observed.url, observed.documentId);
     const [answer] = await this.#chrome.scripting.executeScript<[number, number], ReturnType<typeof pointAtRef>>({ target: { tabId: tab.id!, frameIds: [0] }, func: pointAtRef, args: [point.x, point.y] }).catch(() => []);
     const result = answer?.result;
     if (!result?.ok || !result.ref) throw new PreconditionError(result?.reason ?? 'The page was reloaded. Observe again.');
@@ -423,7 +428,7 @@ export class BrowserCommands implements Executor {
     const table = this.#refs.get(sessionId) ?? new Map<string, Ref>();
     this.#refs.set(sessionId, table);
     table.set(result.ref, { tabKey: key, tabId: tab.id!, frameId, local: result.ref, frame: index, role: result.role ?? '', name: result.name ?? '', docUrl: observed.url, generation: session.generation,
-      ...(documentId ? { documentId } : {}) });
+      ...(documentId ? { documentId } : frameId === 0 && observed.documentId ? { documentId: observed.documentId } : {}) });
     return { ref: result.ref, role: result.role ?? '', name: result.name ?? '', ...(result.href ? { href: result.href } : {}) };
   }
 
@@ -497,6 +502,28 @@ export class BrowserCommands implements Executor {
   /** Where the tab actually is now, which a redirect may have changed; its fragment does not count. */
   #liveUrl(tab: TabInfo): string {
     return normalize(checkUrl(tab.url ?? ''));
+  }
+
+  /**
+   * The tab still shows the page that was observed, or a MOVED refusal.
+   *
+   * "The same page" is the same document, not the same URL: a single-page app
+   * rewrites its own URL as it goes (Google Maps puts the map's position and
+   * the selected place in the path, every few seconds), and that is no reason
+   * to distrust an observation of a document that is still there — the
+   * page side refuses a ref whose element is gone. A new document, though, is
+   * a moved page whatever its URL. A URL the page itself rewrote stays on its
+   * origin (history.pushState cannot leave it); the origin is checked anyway.
+   * Without Chrome's document ids (tests), the URL decides, fragment aside.
+   */
+  async #onObservedPage(tab: TabInfo, observedUrl: string, documentId: string | undefined): Promise<void> {
+    const getFrame = this.#chrome.webNavigation?.getFrame;
+    const live = documentId && getFrame ? await getFrame.call(this.#chrome.webNavigation, { tabId: tab.id!, frameId: 0 }).catch(() => null) : null;
+    if (live?.documentId) {
+      if (live.documentId !== documentId || originOf(this.#liveUrl(tab)) !== originOf(observedUrl)) throw new PreconditionError(MOVED);
+      return;
+    }
+    if (this.#liveUrl(tab) !== observedUrl) throw new PreconditionError(MOVED);
   }
 
   /**
@@ -865,7 +892,7 @@ export class BrowserCommands implements Executor {
     }
     this.#refs.set(sessionId, refs);
     this.#frameInfos.set(sessionId, infos);
-    session.observed = { generation, tabKey: key, url: normalize(main?.url ?? tab.url ?? '') };
+    session.observed = { generation, tabKey: key, url: normalize(main?.url ?? tab.url ?? ''), ...(top.documentId ? { documentId: top.documentId } : {}) };
     const scroll = main?.scroll ?? { x: 0, y: 0 };
     const tree = `${parts.join('\n\n')}\n\nScroll: ${scroll.x}, ${scroll.y}`.slice(0, MAX_TREE);
     return {
@@ -927,10 +954,11 @@ export class BrowserCommands implements Executor {
     const session = await this.#session(command.session);
     const ref = this.#ref(command.session, session, command.args['target']);
     const tab = await this.#ownTab(session, ref.tabKey);
-    // The main frame's document is the tab's URL, so a redirect since the
-    // observation is visible from here. A subframe's is not: its document id
-    // is, and a script aimed at a document that is gone fails (see #script).
-    if (ref.frameId === 0 && this.#liveUrl(tab) !== ref.docUrl) throw new PreconditionError(MOVED);
+    // The main frame is checked here: a new document since the observation (a
+    // navigation, a redirect, a reload) is a moved page. A subframe's ref
+    // carries its document id, and a script aimed at a document that is gone
+    // fails (see #script).
+    if (ref.frameId === 0) await this.#onObservedPage(tab, ref.docUrl, ref.documentId);
     cancel.check();
     return { ref, tab };
   }
