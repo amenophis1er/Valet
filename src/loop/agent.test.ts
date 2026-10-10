@@ -88,7 +88,7 @@ function harness(turns: Turn[], options: { saved?: Persisted; connection?: Conne
     containment: { async apply(origins) { contained.push([...origins]); }, async clear() { contained.push([]); } },
     media: { async set(id, value) { if (mediaFails) throw new Error('QUOTA_BYTES quota exceeded'); media.set(id, value); }, async remove(ids) { for (const id of ids) media.delete(id); } },
     pdf: { async render(id) { printed.push(id); if (pdfFails) throw new Error('Chrome would not attach.'); return btoa(`%PDF ${JSON.stringify(media.get(id))}`); } },
-    skills: { async get() { return options.skills ?? []; } },
+    skills: { async get() { await options.skillsHeld; return options.skills ?? []; } },
     learning: { get: () => learning, async set(on) { learning = on; } },
     async preview(args) { previews.push(args); },
     async note(note) { notes.push(note); },
@@ -1005,5 +1005,35 @@ describe('Learning: one step at a time', () => {
     await h.loop.run('Shop', undefined, true);
     expect(h.ran.map((command) => command.name)).toEqual(['navigate']);
     expect(h.previews).toEqual([]);
+  });
+});
+
+describe('the run lifecycle in the loop', () => {
+  it('a Stop pressed while the run is still starting ends it at its first guard, with nothing dispatched', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const h = harness([callTurn({ id: 'a', args: { action: 'navigate', url: 'https://shop.test/' } })], { skillsHeld: held });
+    const running = h.loop.run('Shop', undefined, true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await h.loop.stop();
+    release();
+    await running;
+    expect(h.ran).toEqual([]);
+    expect(h.requests).toEqual([]);
+    expect(h.loop.state.status).toBe('idle');
+    expect(h.loop.state.transcript.at(-1)).toEqual({ kind: 'notice', text: 'Stopped.' });
+  });
+
+  it('a second message while starting joins the run instead of starting another', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const h = harness([() => ({ ok: true, text: 'Done.', stopReason: 'end' })], { skillsHeld: held });
+    const first = h.loop.run('First', undefined, true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const second = h.loop.run('Second', undefined, true);
+    release();
+    await Promise.all([first, second]);
+    expect(h.requests).toHaveLength(1);
+    expect(JSON.stringify(h.requests[0]!.messages)).toContain('Second');
   });
 });

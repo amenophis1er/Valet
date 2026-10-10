@@ -21,6 +21,8 @@ import { PDF_TYPE, SAVE_FILE_TOOL, saveFile } from './files.js';
 import { attachmentParts, checkAttachments, type Attachment } from './attachments.js';
 import { MAX_SKILL_CHARS, applicable, skillsText, type Skill } from '../skills/skills.js';
 import type { Note } from '../executor/commands.js';
+import { Lifecycle } from './lifecycle.js';
+import { Waiter } from './waiter.js';
 
 export const MAX_ACTIONS = 40;
 export const MAX_RUN_MS = 20 * 60_000;
@@ -171,14 +173,13 @@ export class AgentLoop {
   #amendments: Array<string | AIContentPart[]> = [];
   #abort?: AbortController;
   #cancel?: Cancellation;
-  #stopRequested = false;
   #running?: Promise<void>;
-  /** A start or a resume is under way (its checks await before the status says running): a second message meanwhile joins the run. */
-  #starting = false;
+  /** The run's state machine (lifecycle.ts): every change of status goes through it. */
+  #life = new Lifecycle((status) => { this.#state.status = status; });
   /** The target of the submission card on screen, to record the answer against. */
   #cardTarget?: SubmitTarget;
-  /** The resolver of the card on screen; lost on a restart (the card is then re-raised by the next check). */
-  #resolveCard?: (decision: Decision) => void;
+  /** The card on screen, waiting for the owner; lost on a restart (the card is then re-raised by the next check). */
+  #card = new Waiter<Decision>('deny');
 
   constructor(deps: LoopDeps) {
     this.#deps = deps;
@@ -202,16 +203,14 @@ export class AgentLoop {
 
   /* ---- Learning: one step at a time ---- */
 
-  /** The resolver of the step the loop is waiting with; lost on a restart (the run is then paused). */
-  #resolveStep?: () => void;
+  /** Learn's Next, waiting for the owner; lost on a restart (the run is then paused). */
+  #next = new Waiter<void>(undefined);
   /** A bubble ("Doing it…") is still in the page from the last step; the next step replaces it, or takes it away if Learning went off. */
   #noted = false;
 
   /** The owner's Next: the waiting step goes ahead. Nothing waiting, nothing happens. */
   step(): void {
-    const resolve = this.#resolveStep;
-    this.#resolveStep = undefined;
-    resolve?.();
+    this.#next.answer();
   }
 
   /**
@@ -227,7 +226,7 @@ export class AgentLoop {
     const text = describeStep(args, targets, false);
     const s = this.#state;
     // The waiter exists before the owner can see Next: a click during the preview is never lost.
-    const proceed = this.#stopRequested ? undefined : new Promise<void>((resolve) => { this.#resolveStep = resolve; });
+    const proceed = this.#life.stopRequested ? undefined : this.#next.ask();
     s.stepWait = { text, ...(why ? { why } : {}) };
     await this.#save();
     await this.#deps.preview(args).catch(() => undefined);
@@ -236,8 +235,8 @@ export class AgentLoop {
     if (!this.#deps.learning.get()) this.step();
     if (proceed) await proceed;
     s.stepWait = undefined;
-    this.#noted = !this.#stopRequested;
-    await this.#deps.note(this.#stopRequested ? null : { text, ...(why ? { why } : {}), waiting: false }).catch(() => undefined);
+    this.#noted = !this.#life.stopRequested;
+    await this.#deps.note(this.#life.stopRequested ? null : { text, ...(why ? { why } : {}), waiting: false }).catch(() => undefined);
     await this.#save();
   }
 
@@ -250,13 +249,13 @@ export class AgentLoop {
   /** Show a card and wait for the owner. The decision is recorded before the promise resolves. */
   ask(origin: string, reason: AskReason): Promise<Decision> {
     // A Stop while the card is up answers it as Deny; nothing is dispatched.
-    if (this.#stopRequested) return Promise.resolve('deny');
-    this.#resolveCard?.('deny');
+    if (this.#life.stopRequested) return Promise.resolve('deny');
+    const answered = this.#card.ask();
     const approval: Approval = { id: `a-${this.#now()}-${Math.random().toString(36).slice(2, 8)}`, kind: 'origin', origin, reason };
     this.#state.approval = approval;
     this.#note(reason === 'blocked' ? `The page tried to go to ${origin}. Allow it?` : `Asking you about ${origin}.`);
     void this.#save();
-    return new Promise((resolve) => { this.#resolveCard = resolve; });
+    return answered;
   }
 
   submitVerdict(target: SubmitTarget): Verdict {
@@ -265,8 +264,8 @@ export class AgentLoop {
 
   /** The submission card: where the form goes and what the agent filled in. Asked in Auto too. */
   askSubmit(fingerprint: Fingerprint): Promise<Decision> {
-    if (this.#stopRequested) return Promise.resolve('deny');
-    this.#resolveCard?.('deny');
+    if (this.#life.stopRequested) return Promise.resolve('deny');
+    const answered = this.#card.ask();
     this.#cardTarget = { pageOrigin: fingerprint.frameOrigin, action: fingerprint.action, method: fingerprint.method };
     const approval: Approval = {
       id: `s-${this.#now()}-${Math.random().toString(36).slice(2, 8)}`, kind: 'submit', origin: fingerprint.frameOrigin, reason: 'submit',
@@ -275,7 +274,7 @@ export class AgentLoop {
     this.#state.approval = approval;
     this.#note(`Asking you before submitting a form to ${fingerprint.action}.`);
     void this.#save();
-    return new Promise((resolve) => { this.#resolveCard = resolve; });
+    return answered;
   }
 
   /** The owner answered a card. An answer for any other card (or none) is ignored. */
@@ -291,9 +290,7 @@ export class AgentLoop {
       this.#note(answer === 'deny' ? 'Denied the form submission.'
         : answer === 'chat' ? `Allowed submissions to ${approval.submit?.action} for this conversation.` : 'Allowed this form submission.');
       await this.#save();
-      const resolve = this.#resolveCard;
-      this.#resolveCard = undefined;
-      resolve?.(answer);
+      this.#card.answer(answer);
       return;
     }
     this.#state.scope = decide(this.#state.scope, approval.origin, decision);
@@ -305,9 +302,7 @@ export class AgentLoop {
         : decision === 'auto' ? 'Auto is on: sites are approved without asking for the rest of this conversation, and so are searches and filters. A form that sends data still asks.'
           : `Allowed ${approval.origin} for this request.`);
     await this.#save();
-    const resolve = this.#resolveCard;
-    this.#resolveCard = undefined;
-    resolve?.(decision);
+    this.#card.answer(decision);
   }
 
   /** Turn Auto on or off from the panel; the next conversation starts in the same mode. */
@@ -343,19 +338,21 @@ export class AgentLoop {
     const saved = await this.#deps.storage.get();
     if (!saved) {
       this.#state = { ...empty(), scope: newScope(await this.#deps.mode.get()) };
+      this.#life.load('idle');
       await this.#deps.containment.clear();
       return;
     }
     // State saved before approvals became per conversation has no mode: start it fresh.
     const scope = saved.scope && 'mode' in saved.scope ? saved.scope : newScope(await this.#deps.mode.get());
     this.#state = { ...saved, scope };
+    this.#life.load(saved.status);
     this.#amendments = saved.amendments ?? [];
     // A card that was up when the worker died is re-raised by the next check after Resume; a step waiting is raised again too.
     this.#state.approval = undefined;
     this.#state.stepWait = undefined;
     if (saved.status !== 'running') return;
     this.#answerDangling('The extension restarted while this action was running. Its outcome is unknown. Observe before acting and do not repeat a submission.');
-    this.#state.status = 'paused';
+    this.#life.to('paused');
     this.#state.pauseReason = RESTART_NOTICE;
     this.#note(RESTART_NOTICE);
     await this.#deps.containment.clear();
@@ -384,24 +381,26 @@ export class AgentLoop {
       return;
     }
     // Decided before anything awaits: two quick sends can never start two loops on one conversation.
-    if (this.#starting || this.#state.status === 'running') return this.#amend(goal, text, attachments, skillIds);
-    if (this.#state.status === 'paused') {
-      this.#starting = true;
-      try {
+    if (this.#life.busy) return this.#amend(goal, text, attachments, skillIds);
+    if (this.#life.phase === 'paused') {
+      await this.#starting('paused', async () => {
         await this.#amend(goal, text, attachments, skillIds);
         await this.#resumeRun();
-      } finally {
-        this.#starting = false;
-      }
+      });
       return this.#running;
     }
-    this.#starting = true;
-    try {
-      await this.#start(goal, text, tabId, useNewTab, attachments, skillIds);
-    } finally {
-      this.#starting = false;
-    }
+    await this.#starting('idle', () => this.#start(goal, text, tabId, useNewTab, attachments, skillIds));
     return this.#running;
+  }
+
+  /** Through `starting`: the run goes, or — if it could not start — back to where it was. */
+  async #starting(from: 'idle' | 'paused', body: () => Promise<void>): Promise<void> {
+    this.#life.to('starting');
+    try {
+      await body();
+    } finally {
+      if (this.#life.phase === 'starting') this.#life.to(from);
+    }
   }
 
   /** The owner's message joins the run: shown now, sent with the next model turn. */
@@ -455,7 +454,7 @@ export class AgentLoop {
     const startOrigin = originOf((continuing ? here?.url : handed?.url) ?? '');
     if (startOrigin && verdict(startOrigin, s.scope) !== 'allowed') s.scope = decide(s.scope, startOrigin, 'once');
     if (firstRequest && s.scope.mode === 'auto') this.#note('Auto is on, as in your last conversation: sites are approved without asking, and so are searches and filters. A form that sends data still asks. Change it with the Auto button under the message box.');
-    s.status = 'running';
+    this.#life.to('running');
     s.pauseReason = undefined;
     s.actions = 0;
     s.startedAt = this.#now();
@@ -466,7 +465,6 @@ export class AgentLoop {
     s.history.push({ role: 'user', content: attachments.length > 0 ? attachmentParts(goalText, attachments) : goalText });
     if (s.noVision && attachments.some((attachment) => attachment.kind === 'image' || attachment.kind === 'pdf')) this.#note(NO_VISION);
     this.#deps.controller.startRun();
-    this.#stopRequested = false;
     this.#unknownStep = undefined;
     try {
       await this.#contain();
@@ -474,7 +472,7 @@ export class AgentLoop {
     } catch (error) {
       // Storage refused the new state: the run never starts, and the owner is told.
       s.history.pop();
-      s.status = 'idle';
+      this.#life.to('idle');
       this.#note(`The run could not start: ${error instanceof Error ? error.message : String(error)}`);
       await this.#contain().catch(() => undefined);
       await this.#save().catch(() => undefined);
@@ -485,24 +483,18 @@ export class AgentLoop {
 
   /** Continue a paused run: the controller asks for a fresh observation first. */
   async resume(): Promise<void> {
-    if (this.#state.status !== 'paused' || this.#starting) return;
-    this.#starting = true;
-    try {
-      await this.#resumeRun();
-    } finally {
-      this.#starting = false;
-    }
+    if (this.#life.phase !== 'paused') return;
+    await this.#starting('paused', () => this.#resumeRun());
     return this.#running;
   }
 
   async #resumeRun(): Promise<void> {
     this.#skills = await this.#deps.skills.get().catch(() => []);
     this.#deps.controller.resume();
-    this.#state.status = 'running';
+    this.#life.to('running');
     this.#state.pauseReason = undefined;
     this.#state.startedAt = this.#now();
     this.#state.actions = 0;
-    this.#stopRequested = false;
     this.#unknownStep = undefined;
     await this.#contain();
     await this.#save();
@@ -511,13 +503,13 @@ export class AgentLoop {
 
   /** Stop: abort the model request and the executor command in flight. */
   async stop(): Promise<void> {
-    this.#stopRequested = true;
+    this.#life.requestStop();
     this.#abort?.abort();
     this.#cancel?.cancel();
     this.step();
     // A card on screen is answered as Deny: nothing it would have allowed is dispatched.
     if (this.#state.approval) await this.decide(this.#state.approval.id, 'deny');
-    if (this.#state.status === 'paused') await this.#end('Stopped.');
+    if (this.#life.phase === 'paused') await this.#end('Stopped.');
     await this.#running;
   }
 
@@ -526,6 +518,7 @@ export class AgentLoop {
     await this.#deps.closeTabs().catch(() => undefined);
     await this.#deps.media.remove(this.#mediaIds()).catch(() => undefined);
     this.#state = { ...empty(), scope: newScope(await this.#deps.mode.get()) };
+    this.#life.load('idle');
     this.#amendments = [];
     await this.#save();
   }
@@ -535,6 +528,7 @@ export class AgentLoop {
     await this.stop();
     await this.#deps.media.remove(this.#mediaIds()).catch(() => undefined);
     this.#state = { ...empty(), scope: newScope(await this.#deps.mode.get()) };
+    this.#life.load('idle');
     this.#amendments = [];
     await this.#deps.storage.remove?.().catch(() => undefined);
     this.#deps.emit(this.state);
@@ -619,7 +613,7 @@ export class AgentLoop {
     try {
       for (;;) {
         // Guards before every model turn, not only before calls.
-        if (this.#stopRequested) return this.#end('Stopped.');
+        if (this.#life.stopRequested) return this.#end('Stopped.');
         if (this.#controllerPaused()) return this.#pause(this.#pauseReason());
         if (s.actions >= MAX_ACTIONS) return this.#end(`Stopped after ${MAX_ACTIONS} browser actions, the limit for one run. Say "continue" to go on.`);
         if (this.#now() - s.startedAt > MAX_RUN_MS) return this.#end('Stopped after 20 minutes, the limit for one run. Say "continue" to go on.');
@@ -635,14 +629,14 @@ export class AgentLoop {
         let result = await ask();
         // A dropped connection or a provider hiccup: the request acted on nothing, so it is sent again, twice at most.
         for (const delay of deps.retryDelaysMs ?? RETRY_DELAYS_MS) {
-          if (result.ok || !result.retryable || this.#stopRequested) break;
+          if (result.ok || !result.retryable || this.#life.stopRequested) break;
           this.#note(`${result.error ?? 'The model request failed.'} Trying again…`);
           await this.#save();
           await new Promise((resolve) => setTimeout(resolve, delay));
-          if (this.#stopRequested) break;
+          if (this.#life.stopRequested) break;
           result = await ask();
         }
-        if (this.#stopRequested) return this.#end('Stopped.');
+        if (this.#life.stopRequested) return this.#end('Stopped.');
         // A model that cannot take images fails the whole request: go on without them.
         if (!result.ok && !s.noVision && IMAGE_ERROR.test(result.error ?? '') && this.#view().some(hasImage)) {
           s.noVision = true;
@@ -714,11 +708,11 @@ export class AgentLoop {
         continue;
       }
       this.#cancel = new Cancellation();
-      if (this.#stopRequested) this.#cancel.cancel();
+      if (this.#life.stopRequested) this.#cancel.cancel();
       // Named from the page as the model saw it, before the action changes it.
       const targets = [...this.#deps.controller.latestTargets];
       await this.#awaitStep(call.args ?? {}, targets, why);
-      if (this.#stopRequested) this.#cancel.cancel();
+      if (this.#life.stopRequested) this.#cancel.cancel();
       const ran = await this.#deps.controller.run(call.args, this.#cancel);
       const notes = 'observation' in ran && ran.observation ? this.#notesFor(ran.observation.url) : undefined;
       const result: ToolResult = notes ? { ...ran, ownerNotes: notes } as unknown as ToolResult : ran;
@@ -918,7 +912,7 @@ export class AgentLoop {
   }
 
   async #pause(reason: string): Promise<void> {
-    this.#state.status = 'paused';
+    this.#life.to('paused');
     this.#state.pauseReason = reason;
     this.#noted = false;
     await this.#deps.note(null).catch(() => undefined);
@@ -944,7 +938,7 @@ export class AgentLoop {
 
   async #end(notice?: string): Promise<void> {
     if (notice) this.#note(notice);
-    this.#state.status = 'idle';
+    this.#life.to('idle');
     this.#noted = false;
     this.#unknownStep = undefined;
     await this.#deps.note(null).catch(() => undefined);
