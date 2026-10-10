@@ -28,6 +28,13 @@ const wireTarget = { type: 'object', additionalProperties: false, properties: { 
 const wirePoint = { type: 'object', additionalProperties: false, required: ['x', 'y'], properties: { x: { type: 'integer', minimum: 0, maximum: 10_000 }, y: { type: 'integer', minimum: 0, maximum: 10_000 } } } as const;
 
 /**
+ * Which actions use a field, for a description that names them from the
+ * registry instead of by hand: `requiring` must send it, `taking` may,
+ * `acting` are the actions that act on the page.
+ */
+export interface Usage { requiring: string[]; taking: string[]; acting: string[]; list(names: readonly string[]): string }
+
+/**
  * Every field, in the order the model sees them. `exclusive`: the validator
  * refuses the field on an action that does not take it (others are ignored
  * when sent where they mean nothing). `noun`: how a refusal names it.
@@ -43,11 +50,12 @@ export const FIELDS = {
     wire: { type: 'boolean', description: 'navigate only: open the url in a new tab of this conversation and work there, leaving the current tab as it is.' },
   },
   target: {
+    describe: (usage: Usage) => `Required for ${usage.list(usage.requiring)}; ${usage.list(usage.taking)} take a target or a point. Prefer a ref copied from the latest observation.targets.`,
     zod: target.optional(),
     wire: {
       type: 'object',
       additionalProperties: false,
-      description: 'Required for fill, select and press, and for click unless it has a point. Prefer a ref copied from the latest observation.targets.',
+      description: '',
       properties: {
         ref: { type: 'string', minLength: 1, maxLength: 40, description: 'Preferred: copy a ref from the latest observation.targets. Identifies one exact element, including repeated links.' },
         role: { type: 'string', enum: [...ROLES] },
@@ -104,8 +112,9 @@ export const FIELDS = {
     wire: { type: 'string', maxLength: 40, description: 'Required for tab: an id from observation.tabs.' },
   },
   observation: {
+    describe: (usage: Usage) => `REQUIRED for ${usage.list(usage.acting)}. Copy observation.id from the most recent result, including recovery results. Never reuse after a dispatched action.`,
     zod: z.string().max(80).optional(),
-    wire: { type: 'string', maxLength: 80, description: 'REQUIRED for click, fill, select, press and scroll. Copy observation.id from the most recent result, including recovery results. Never reuse after a dispatched action.' },
+    wire: { type: 'string', maxLength: 80, description: '' },
   },
 } as const;
 

@@ -10,8 +10,8 @@
  */
 
 import { z } from 'zod';
-import { FIELDS, FIELD_NAMES, KEYS, type FieldName } from './fields.js';
-import { GUIDE, UNTRUSTED } from './guide.js';
+import { FIELDS, FIELD_NAMES, KEYS, type FieldName, type Usage } from './fields.js';
+import { INTRO, UNTRUSTED, rules } from './guide.js';
 import { ACTION_NAMES, type ActionName, type ActionSpec, type Call, type Issue, type Words } from './spec.js';
 import { navigate } from './navigate.js';
 import { observe } from './observe.js';
@@ -88,6 +88,19 @@ export type BrowserCommand = z.infer<typeof commandSchema>;
 
 /* ---- what the model is given ---- */
 
+/** A field's wire schema, its description naming the actions that use it when the field says how. */
+function wireOf(field: FieldName): object {
+  const def = FIELDS[field] as { wire: object; describe?: (usage: Usage) => string };
+  if (!def.describe) return def.wire;
+  const usage: Usage = {
+    requiring: ACTION_NAMES.filter((name) => SPECS[name].fields.required?.includes(field)),
+    taking: ACTION_NAMES.filter((name) => SPECS[name].fields.optional?.includes(field)),
+    acting: [...ACTING],
+    list: listOf,
+  };
+  return { ...def.wire, description: def.describe(usage) };
+}
+
 /** The JSON Schema the model sees: types, enums and limits; the cross-field rules live in the validator. */
 export const WIRE_SCHEMA = {
   type: 'object',
@@ -95,11 +108,12 @@ export const WIRE_SCHEMA = {
   required: ['action'],
   properties: {
     action: { type: 'string', enum: [...ACTION_NAMES] },
-    ...(Object.fromEntries(FIELD_NAMES.map((field) => [field, FIELDS[field].wire])) as { [K in FieldName]: (typeof FIELDS)[K]['wire'] }),
+    ...(Object.fromEntries(FIELD_NAMES.map((field) => [field, wireOf(field)])) as { [K in FieldName]: (typeof FIELDS)[K]['wire'] }),
   },
 } as const;
 
-export const TOOL_DESCRIPTION = GUIDE.join(' ');
+/** Where the agent works, then each action in turn, then the rules every call lives by. */
+export const TOOL_DESCRIPTION = [INTRO, ...ACTION_NAMES.map((name) => SPECS[name].guide), ...rules(listOf(ACTING))].join(' ');
 
 export const BROWSER_TOOL = { name: 'browser', description: TOOL_DESCRIPTION, inputSchema: WIRE_SCHEMA } as const;
 

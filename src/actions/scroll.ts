@@ -6,5 +6,6 @@ export const scroll: ActionSpec = {
   acting: true,
   facts: INERT,
   fields: { required: ['direction'] },
+  guide: 'scroll moves the page up or down.',
   step: (call, { verb }) => `${verb('Scrolled', 'Scroll')} ${String(call.direction ?? '')}`,
 };

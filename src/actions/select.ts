@@ -6,5 +6,6 @@ export const select: ActionSpec = {
   acting: true,
   facts: INERT,
   fields: { required: ['target', 'value'] },
+  guide: 'select picks an option by its label, text or value.',
   step: (call, { verb, what }) => `${verb('Chose', 'Choose')} "${String(call.value ?? '')}" in ${what}`,
 };

@@ -45,6 +45,8 @@ export interface ActionSpec {
    * answer is "no": a fact left out is a compile error, never a skipped check.
    */
   facts: Facts;
+  /** What the model is told about this action, in the tool description: when to use it and how. */
+  guide: string;
   /** The step in the owner's words: past tense once done ("Clicked …"), the plain verb when not. */
   step(call: Call, words: Words): string;
 }

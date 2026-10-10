@@ -8,5 +8,6 @@ export const hover: ActionSpec = {
   facts: INERT,
   fields: { optional: ['target', 'point', 'screenshot'] },
   rules: targetOrPoint,
+  guide: 'hover moves the mouse onto a target or point without clicking (menus that open on hover, tooltips).',
   step: (_call, { verb, where }) => `${verb('Pointed at', 'Point at')} ${where}`,
 };

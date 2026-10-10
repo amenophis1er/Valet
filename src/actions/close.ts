@@ -6,5 +6,6 @@ export const close: ActionSpec = {
   acting: false,
   facts: INERT,
   fields: {},
+  guide: 'close closes this conversation\'s tabs.',
   step: (_call, { verb }) => verb('Closed its tabs', 'Close its tabs'),
 };

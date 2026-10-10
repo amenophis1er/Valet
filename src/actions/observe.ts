@@ -6,5 +6,6 @@ export const observe: ActionSpec = {
   acting: false,
   facts: INERT,
   fields: {},
+  guide: 'observe reads the page again: a fresh observation with new refs, when the page may have changed on its own.',
   step: (_call, { verb }) => verb('Read the page', 'Read the page'),
 };

@@ -15,6 +15,7 @@ export const drag: ActionSpec = {
     if (!to || (!to.target && !to.point)) issue(['to'], 'drag needs to: where it ends, a target or a point');
     else if (to.target && to.point) issue(['to', 'point'], 'Use a target or a point for to, not both');
   },
+  guide: 'drag presses on a target or point and releases on `to` (a target or point): sliders, maps, reordering, drawing.',
   step(call, { verb, where, name }) {
     const to = call.to as End;
     const end = to?.point ? `the point (${to.point.x}, ${to.point.y})` : name(to?.target, 'there');

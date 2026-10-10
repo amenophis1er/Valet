@@ -34,7 +34,7 @@
     "target": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Required for fill, select and press, and for click unless it has a point. Prefer a ref copied from the latest observation.targets.",
+      "description": "Required for fill, select and press; click, hover and drag take a target or a point. Prefer a ref copied from the latest observation.targets.",
       "properties": {
         "ref": {
           "type": "string",
@@ -238,7 +238,7 @@
     "observation": {
       "type": "string",
       "maxLength": 80,
-      "description": "REQUIRED for click, fill, select, press and scroll. Copy observation.id from the most recent result, including recovery results. Never reuse after a dispatched action."
+      "description": "REQUIRED for click, hover, drag, fill, select, press and scroll. Copy observation.id from the most recent result, including recovery results. Never reuse after a dispatched action."
     }
   }
 }

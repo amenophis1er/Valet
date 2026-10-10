@@ -6,5 +6,6 @@ export const screenshot: ActionSpec = {
   acting: false,
   facts: INERT,
   fields: {},
+  guide: 'screenshot shows you the visible part of the current tab as an image, and shows it to the owner too; use it when layout, images or charts matter, not instead of observe. Parts of the page from sites outside this run are painted grey.',
   step: (_call, { verb }) => verb('Took a screenshot', 'Take a screenshot'),
 };
