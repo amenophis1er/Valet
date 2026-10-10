@@ -12,7 +12,7 @@
 
 import type { AIChatRequest, AIChatResult, AIContentPart, AIMessage, AIToolCall } from '@amenophis1er/extension-ai-connect/types';
 import type { AskReason, Fingerprint, RunController, ToolResult } from '../controller/controller.js';
-import { ACTIONS, BROWSER_TOOL } from '../controller/schema.js';
+import { BROWSER_TOOL, describeStep } from '../actions/index.js';
 import { Cancellation } from '../executor/protocol.js';
 import { SYSTEM_PROMPT, goalMessage, historyView } from './prompt.js';
 import { decide, decideSubmission, newScope, nextRun, originOf, reachable, submitVerdict, verdict, type Decision, type Mode, type Scope, type SubmitTarget, type Verdict } from '../scope/scope.js';
@@ -149,47 +149,6 @@ function detailOf(result: ToolResult): string {
   return text('error') || (r['closed'] ? 'Closed the agent\'s tabs.' : '');
 }
 
-/**
- * A step in the owner's words, capitalized: past tense once it happened
- * ("Clicked link "Lomé""), the plain verb when it did not ("Click link "Lomé"",
- * shown with its outcome).
- */
-export function describe(args: Record<string, unknown> | undefined, targets: ReadonlyArray<{ ref: string; role: string; name: string }>, done: boolean): string {
-  if (!args || !(ACTIONS as readonly unknown[]).includes(args['action'])) return 'Invalid command';
-  const target = args['target'] as { ref?: string; name?: string; role?: string } | undefined;
-  const known = target?.ref ? targets.find((candidate) => candidate.ref === target.ref) : undefined;
-  const name = known?.name.trim() || target?.name;
-  const role = known?.role ?? target?.role;
-  const what = name ? `${role ? `${role} ` : ''}"${name}"` : (target?.ref ?? 'the page');
-  const point = args['point'] as { x?: number; y?: number } | undefined;
-  const where = point ? `the point (${point.x}, ${point.y}) on the screenshot` : what;
-  const verb = (past: string, plain: string) => (done ? past : plain);
-  switch (args['action']) {
-    case 'navigate': return `${verb('Opened', 'Open')} ${String(args['url'] ?? '')}${args['newTab'] === true ? ' in a new tab' : ''}`;
-    case 'observe': return verb('Read the page', 'Read the page');
-    case 'screenshot': return verb('Took a screenshot', 'Take a screenshot');
-    case 'fill': return `${verb('Typed into', 'Type into')} ${what}`;
-    case 'select': return `${verb('Chose', 'Choose')} "${String(args['value'] ?? '')}" in ${what}`;
-    case 'press': return `${verb('Pressed', 'Press')} ${String(args['key'] ?? '')} on ${what}`;
-    case 'scroll': return `${verb('Scrolled', 'Scroll')} ${String(args['direction'] ?? '')}`;
-    case 'tab': return verb('Switched tab', 'Switch tab');
-    case 'click': {
-      const how = args['button'] === 'right' ? verb('Right-clicked', 'Right-click') : args['count'] === 2 ? verb('Double-clicked', 'Double-click') : verb('Clicked', 'Click');
-      return `${how} ${where}`;
-    }
-    case 'hover': return `${verb('Pointed at', 'Point at')} ${where}`;
-    case 'drag': {
-      const end = args['to'] as { target?: { ref?: string; name?: string; role?: string }; point?: { x?: number; y?: number } } | undefined;
-      const endKnown = end?.target?.ref ? targets.find((candidate) => candidate.ref === end.target!.ref) : undefined;
-      const endName = endKnown?.name.trim() || end?.target?.name;
-      const endWhat = end?.point ? `the point (${end.point.x}, ${end.point.y})` : endName ? `${endKnown?.role ?? end?.target?.role ?? ''} "${endName}"`.trim() : (end?.target?.ref ?? 'there');
-      return `${verb('Dragged', 'Drag')} ${where} to ${endWhat}`;
-    }
-    case 'close': return verb('Closed its tabs', 'Close its tabs');
-    default: return String(args['action'] ?? '?');
-  }
-}
-
 /** A stored screenshot, as its transcript entry names it. */
 type KeptImage = { id: string; width: number; height: number; bytes: number };
 
@@ -265,7 +224,7 @@ export class AgentLoop {
       if (this.#noted && !this.#deps.learning.get()) { this.#noted = false; await this.#deps.note(null).catch(() => undefined); }
       return;
     }
-    const text = describe(args, targets, false);
+    const text = describeStep(args, targets, false);
     const s = this.#state;
     // The waiter exists before the owner can see Next: a click during the preview is never lost.
     const proceed = this.#stopRequested ? undefined : new Promise<void>((resolve) => { this.#resolveStep = resolve; });
@@ -772,7 +731,7 @@ export class AgentLoop {
         } catch (error) {
           // Storage refused it: the call still gets its one answer, without the image.
           this.#answer(call, { error: `The screenshot could not be kept: ${error instanceof Error ? error.message : String(error)}`, notice: 'Nothing was dispatched.' }, true);
-          s.transcript.push({ kind: 'action', text: describe(call.args, targets, false), outcome: 'error', detail: 'The screenshot could not be kept.' });
+          s.transcript.push({ kind: 'action', text: describeStep(call.args, targets, false), outcome: 'error', detail: 'The screenshot could not be kept.' });
           failed = true;
           s.actions += 1;
           await this.#save();
@@ -780,17 +739,17 @@ export class AgentLoop {
         }
       }
       if (image) {
-        s.transcript.push({ kind: 'action', text: describe(call.args, targets, outcome === 'ok'), outcome, image });
+        s.transcript.push({ kind: 'action', text: describeStep(call.args, targets, outcome === 'ok'), outcome, image });
         await this.#pruneMedia();
       } else {
         this.#answer(call, result, outcome !== 'ok');
-        s.transcript.push({ kind: 'action', text: describe(call.args, targets, outcome === 'ok'), outcome, ...(detail ? { detail } : {}) });
+        s.transcript.push({ kind: 'action', text: describeStep(call.args, targets, outcome === 'ok'), outcome, ...(detail ? { detail } : {}) });
       }
       s.actions += 1;
       if ('terminal' in result) terminal = result.terminal;
       else if (outcome !== 'ok' || ('observed' in result && result.observed === false)) failed = true;
       // The step was sent but its outcome is not known: the run pauses, and the owner is told which step and why, in their words.
-      if (outcome === 'unknown') this.#unknownStep = { text: describe(call.args, targets, false), error: detail };
+      if (outcome === 'unknown') this.#unknownStep = { text: describeStep(call.args, targets, false), error: detail };
       await this.#save();
     }
     return terminal;

@@ -8,7 +8,7 @@
  */
 
 import type { AIMessage } from '@amenophis1er/extension-ai-connect/types';
-import { UNTRUSTED } from '../controller/schema.js';
+import { UNTRUSTED } from '../actions/index.js';
 
 export const SYSTEM_PROMPT = [
   'You are Valet, working in the owner\'s own Chrome through the `browser` tool.',

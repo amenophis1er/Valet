@@ -17,7 +17,7 @@ import { Cancellation, CancelledError, PreconditionError, sentence, type Command
 import { boundObservation } from './observation.js';
 import { originOf, type Decision, type SubmitTarget, type Verdict } from '../scope/scope.js';
 import type { SubmitFingerprint } from '../executor/content.js';
-import { ACTING, UNTRUSTED, commandSchema, type BrowserCommand } from './schema.js';
+import { ACTING, UNTRUSTED, commandSchema, type BrowserCommand } from '../actions/index.js';
 
 /** The slice of the executor the controller drives. `BrowserCommands` satisfies it. */
 export interface ExecutorLike {

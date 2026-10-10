@@ -6,6 +6,8 @@
  * the shared shapes and the stop switch.
  */
 
+import type { ActionName } from '../actions/spec.js';
+
 export interface ObservedTarget {
   ref: string;
   frame: number;
@@ -27,9 +29,8 @@ export interface Observation {
   screenshotSize?: { width: number; height: number };
 }
 
-/** Everything the model's `browser` tool can name. */
-const COMMAND_NAMES = ['navigate', 'observe', 'screenshot', 'click', 'hover', 'drag', 'fill', 'select', 'press', 'scroll', 'tab', 'close'] as const;
-export type CommandName = (typeof COMMAND_NAMES)[number];
+/** The executor runs exactly the browser tool's actions (src/actions). */
+export type CommandName = ActionName;
 
 export interface Command {
   id: string;

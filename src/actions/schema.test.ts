@@ -8,7 +8,7 @@
  * permitted gap. A tiny checker covers the JSON Schema subset the wire uses.
  */
 import { describe, expect, it } from 'vitest';
-import { commandSchema, WIRE_SCHEMA, TOOL_DESCRIPTION, UNTRUSTED } from './schema.js';
+import { commandSchema, WIRE_SCHEMA, TOOL_DESCRIPTION, UNTRUSTED } from './index.js';
 
 type Node = Record<string, unknown>;
 
