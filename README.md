@@ -36,16 +36,21 @@ companion app.
   debugger), so it works on pages that ignore scripted events.
 - **See the page** — as an accessibility tree with a ref for every element,
   and, when layout or images matter, as a **screenshot** it can take itself.
+  To summarize or answer from a long page, it **reads** the page's text — the
+  article, not the menus — in parts, so nothing is cut off.
   Parts of a page that come from sites you haven't allowed are painted grey
   before any pixel reaches the model. What the tree cannot name — a canvas, a
   map, a chart, a custom control — it can **click by point** on that
   screenshot; refs stay the first choice, and a grey area cannot be clicked.
 - **Make files for you** — a summary as `.md`, a table as `.csv`, data as
-  `.json`, a document as `.pdf` (Chrome itself prints it, in a tab that opens
-  and closes again). You get a Download button; nothing is saved until you click.
+  `.json`, or a designed **PDF** report: title block, sections, tables, sources
+  and page numbers, printed by Chrome itself in a minimized window of its own.
+  You get a Download button; nothing is saved until you click.
 - **Take what you give it** — attach images, PDFs and text files (pick, drag
   in, or paste), or a screenshot of any tab, window or screen through Chrome's
-  own share dialog. Or dictate with the mic.
+  own share dialog. Or **dictate** with the mic: words appear as you speak,
+  and once you stop, punctuation is tidied on your device by Chrome's built-in
+  model (Settings → Dictation downloads it, once).
 - **Work at your pace** — *Fast* does each action at once; *Natural* types
   letter by letter, moves the mouse smoothly and pauses between steps, so you
   can follow along (Settings → Pace).
@@ -57,7 +62,6 @@ companion app.
   Type `@` in the message box to bring one in, and after a run that went well,
   **Save as skill** drafts one from what worked — you edit it before it is
   kept (Settings → Skills).
-
 - **See why a run went wrong** — the ⋯ menu saves a **run trace**: every
   model turn, every action with its arguments and result, every approval and
   state change, with times — one JSON file to inspect or share.
@@ -78,13 +82,26 @@ enforces the rules:
   and are re-checked right before sending: if anything changed, you're asked
   again. A submission whose outcome is uncertain is never repeated.
 - **Evidence rules.** Every action names an element from the latest
-  observation; if the page changed underneath, the action is refused before
+  observation; if a new page has loaded since, the action is refused before
   anything is dispatched.
 - **Hard limits.** The agent never types into password fields, never runs
   code in pages, and never follows instructions found in page content. Sign-ins,
   CAPTCHAs and MFA are handed to you.
 - **Budgets.** At most 40 browser actions and 20 minutes per run; Stop always
   works.
+
+## Permissions
+
+| Permission | Why |
+| --- | --- |
+| Access to all sites | It works on whichever site you ask it to; the approval cards and network rules decide where it may actually go. |
+| `debugger` | Real mouse and keyboard input, and screenshots, on the tabs it works in. |
+| `scripting` | Reading a page and finding the element an action names. |
+| `tabs`, `tabGroups` | Opening its own tabs next to yours, in one `valet` group. |
+| `webNavigation` | Telling a new page from the same one, and finding a page's frames. |
+| `declarativeNetRequest` | Blocking requests to sites you have not approved, before they leave the browser; and the headers the Claude and ChatGPT sign-ins need. |
+| `sidePanel` | The panel, one per tab. |
+| `storage` | Your connections (encrypted), settings and skills. |
 
 ## Privacy
 
@@ -96,14 +113,16 @@ browser closes. Skills are the one thing kept: your own notes, in Chrome's
 sync storage (so they follow your profile), exportable as JSON — never page
 content or conversation history. Dictation uses Chrome's speech recognition: on your device
 when Chrome supports it, otherwise Chrome's speech service (the mic's tooltip
-says which).
+says which). Its punctuation cleanup runs only on your device, or not at all.
 
 ## Install from source
 
 On first install Valet opens a welcome page: open the side panel, connect a
 model, try a first task. It is there again under Settings → Welcome guide.
 
-Requirements: Chrome 116+ and Node 22+.
+Requirements: Chrome 116+ and Node 22+. The Ollama Cloud sign-in needs Chrome
+137+, and the dictation cleanup Chrome's built-in model (Chrome 138+ on a
+computer that qualifies); everything else works without them.
 
 ```sh
 git clone https://github.com/amenophis1er/Valet.git
@@ -128,6 +147,7 @@ npm run e2e          # end to end in Chromium (Playwright)
 npm run typecheck
 npm run lint         # Biome, and the layering rules in .dependency-cruiser.cjs
 npm run docs         # regenerate docs/actions.md from the action registry
+npm run screenshots  # every screen and state, light and dark, into screenshots/
 ```
 
 How it is put together — the layers, the path every action takes, what the
