@@ -1,0 +1,244 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "action"
+  ],
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "navigate",
+        "observe",
+        "screenshot",
+        "click",
+        "hover",
+        "drag",
+        "fill",
+        "select",
+        "press",
+        "scroll",
+        "tab",
+        "close"
+      ]
+    },
+    "url": {
+      "type": "string",
+      "maxLength": 2048,
+      "description": "Required for navigate. http or https only."
+    },
+    "newTab": {
+      "type": "boolean",
+      "description": "navigate only: open the url in a new tab of this conversation and work there, leaving the current tab as it is."
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Required for fill, select and press, and for click unless it has a point. Prefer a ref copied from the latest observation.targets.",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "description": "Preferred: copy a ref from the latest observation.targets. Identifies one exact element, including repeated links."
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "button",
+            "link",
+            "textbox",
+            "checkbox",
+            "radio",
+            "combobox",
+            "option",
+            "tab",
+            "menuitem",
+            "switch",
+            "searchbox",
+            "spinbutton"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300,
+          "description": "Exact accessible name, when there is no ref."
+        },
+        "by": {
+          "type": "string",
+          "enum": [
+            "role",
+            "label",
+            "placeholder",
+            "text",
+            "link"
+          ],
+          "default": "role",
+          "description": "Locator method. Prefer ref. For a semantic link use by:\"role\", role:\"link\"."
+        },
+        "frame": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10,
+          "default": 0
+        }
+      }
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y"
+      ],
+      "description": "click, hover and drag, instead of a target: a point on the latest screenshot, in that image's pixels (x from the left, y from the top). For what the observation cannot name — a canvas, a map, a chart, a custom control. Needs screenshot.",
+      "properties": {
+        "x": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "y": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        }
+      }
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2,
+      "description": "click only: 2 for a double-click (open a file in a list, select a word). Default 1."
+    },
+    "button": {
+      "type": "string",
+      "enum": [
+        "left",
+        "right"
+      ],
+      "description": "click only: \"right\" opens the context menu (then click an item in it). Default left."
+    },
+    "to": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Required for drag: where the drag ends — a target (a ref) or a point on the latest screenshot.",
+      "properties": {
+        "target": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ref": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "button",
+                "link",
+                "textbox",
+                "checkbox",
+                "radio",
+                "combobox",
+                "option",
+                "tab",
+                "menuitem",
+                "switch",
+                "searchbox",
+                "spinbutton"
+              ]
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 300
+            },
+            "by": {
+              "type": "string",
+              "enum": [
+                "role",
+                "label",
+                "placeholder",
+                "text",
+                "link"
+              ],
+              "default": "role"
+            },
+            "frame": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10,
+              "default": 0
+            }
+          }
+        },
+        "point": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "x",
+            "y"
+          ],
+          "properties": {
+            "x": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            },
+            "y": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            }
+          }
+        }
+      }
+    },
+    "screenshot": {
+      "type": "string",
+      "maxLength": 80,
+      "description": "Required with point: copy screenshot.id from the latest screenshot result. A screenshot taken before any action is stale."
+    },
+    "value": {
+      "type": "string",
+      "maxLength": 10000,
+      "description": "Required for fill (the text) and select (an option label, text or value)."
+    },
+    "key": {
+      "type": "string",
+      "enum": [
+        "Enter",
+        "Tab",
+        "Escape",
+        "ArrowDown",
+        "ArrowUp",
+        "ArrowLeft",
+        "ArrowRight",
+        "Space",
+        "Backspace"
+      ],
+      "description": "Required for press, with a target."
+    },
+    "direction": {
+      "type": "string",
+      "enum": [
+        "up",
+        "down"
+      ],
+      "description": "Required for scroll."
+    },
+    "tabId": {
+      "type": "string",
+      "maxLength": 40,
+      "description": "Required for tab: an id from observation.tabs."
+    },
+    "observation": {
+      "type": "string",
+      "maxLength": 80,
+      "description": "REQUIRED for click, fill, select, press and scroll. Copy observation.id from the most recent result, including recovery results. Never reuse after a dispatched action."
+    }
+  }
+}

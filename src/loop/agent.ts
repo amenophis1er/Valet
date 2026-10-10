@@ -154,7 +154,7 @@ function detailOf(result: ToolResult): string {
  * ("Clicked link "Lomé""), the plain verb when it did not ("Click link "Lomé"",
  * shown with its outcome).
  */
-function describe(args: Record<string, unknown> | undefined, targets: ReadonlyArray<{ ref: string; role: string; name: string }>, done: boolean): string {
+export function describe(args: Record<string, unknown> | undefined, targets: ReadonlyArray<{ ref: string; role: string; name: string }>, done: boolean): string {
   if (!args || !(ACTIONS as readonly unknown[]).includes(args['action'])) return 'Invalid command';
   const target = args['target'] as { ref?: string; name?: string; role?: string } | undefined;
   const known = target?.ref ? targets.find((candidate) => candidate.ref === target.ref) : undefined;

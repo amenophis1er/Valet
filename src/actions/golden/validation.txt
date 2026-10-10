@@ -1,0 +1,102 @@
+{"action":"navigate","url":"https://shop.example/mugs"}
+  → ok
+{"action":"navigate","url":"https://shop.example/mugs","newTab":true}
+  → ok
+{"action":"observe"}
+  → ok
+{"action":"screenshot"}
+  → ok
+{"action":"click","target":{"ref":"e1"},"observation":"obs-1"}
+  → ok
+{"action":"click","target":{"ref":"e2"},"count":2,"observation":"obs-1"}
+  → ok
+{"action":"click","target":{"ref":"e2"},"button":"right","observation":"obs-1"}
+  → ok
+{"action":"click","point":{"x":120,"y":40},"screenshot":"s1","observation":"obs-1"}
+  → ok
+{"action":"click","target":{"by":"role","role":"link","name":"Docs"},"observation":"obs-1"}
+  → ok
+{"action":"hover","target":{"ref":"e2"},"observation":"obs-1"}
+  → ok
+{"action":"drag","target":{"ref":"e2"},"to":{"point":{"x":300,"y":20}},"observation":"obs-1"}
+  → screenshot: Required for drag
+{"action":"drag","point":{"x":1,"y":2},"to":{"target":{"ref":"e1"}},"observation":"obs-1"}
+  → screenshot: Required for drag
+{"action":"fill","target":{"ref":"e3"},"value":"a@b.test","observation":"obs-1"}
+  → ok
+{"action":"select","target":{"ref":"e3"},"value":"Blue","observation":"obs-1"}
+  → ok
+{"action":"press","target":{"ref":"e3"},"key":"Enter","observation":"obs-1"}
+  → ok
+{"action":"scroll","direction":"down","observation":"obs-1"}
+  → ok
+{"action":"tab","tabId":"tab-2"}
+  → ok
+{"action":"close"}
+  → ok
+{"action":"teleport"}
+  → action: Invalid option: expected one of "navigate"|"observe"|"screenshot"|"click"|"hover"|"drag"|"fill"|"select"|"press"|"scroll"|"tab"|"close"
+{"action":"navigate"}
+  → url: Required for navigate
+{"action":"navigate","url":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+  → url: Too big: expected string to have <=2048 characters
+{"action":"observe","newTab":true}
+  → newTab: Only navigate takes newTab
+{"action":"click","observation":"obs-1"}
+  → target: click needs a target (a ref from observation.targets) or a point on the latest screenshot
+{"action":"click","target":{"ref":"e1"}}
+  → observation: Required for click
+{"action":"click","observation":"obs-1","target":{"ref":"e1"},"point":{"x":1,"y":1},"screenshot":"s"}
+  → point: Use a target or a point, not both
+{"action":"click","observation":"obs-1","point":{"x":1,"y":1}}
+  → screenshot: Required for click
+{"action":"click","observation":"obs-1","target":{"ref":"e1"},"count":3}
+  → count: Too big: expected number to be <=2
+{"action":"click","observation":"obs-1","target":{"ref":"e1"},"count":2,"button":"right"}
+  → count: A double-click is with the left button
+{"action":"hover","observation":"obs-1","target":{"ref":"e1"},"count":2}
+  → count: Only click takes count
+{"action":"fill","observation":"obs-1","target":{"ref":"e1"},"button":"right","value":"x"}
+  → button: Only click takes button
+{"action":"fill","observation":"obs-1","target":{"ref":"e1"}}
+  → value: Required for fill
+{"action":"fill","observation":"obs-1","value":"x"}
+  → target: Required for fill
+{"action":"select","observation":"obs-1","target":{"ref":"e1"}}
+  → value: Required for select
+{"action":"press","observation":"obs-1","target":{"ref":"e1"}}
+  → key: Required for press
+{"action":"press","observation":"obs-1","key":"Enter"}
+  → target: Required for press
+{"action":"press","observation":"obs-1","target":{"ref":"e1"},"key":"F5"}
+  → key: Invalid option: expected one of "Enter"|"Tab"|"Escape"|"ArrowDown"|"ArrowUp"|"ArrowLeft"|"ArrowRight"|"Space"|"Backspace"
+{"action":"scroll","observation":"obs-1"}
+  → direction: Required for scroll
+{"action":"scroll","observation":"obs-1","direction":"left"}
+  → direction: Invalid option: expected one of "up"|"down"
+{"action":"tab"}
+  → tabId: Required for tab
+{"action":"drag","observation":"obs-1","target":{"ref":"e1"}}
+  → to: drag needs to: where it ends, a target or a point
+{"action":"drag","observation":"obs-1","target":{"ref":"e1"},"to":{}}
+  → to: drag needs to: where it ends, a target or a point
+{"action":"drag","observation":"obs-1","target":{"ref":"e1"},"to":{"target":{"ref":"e2"},"point":{"x":1,"y":1}},"screenshot":"s"}
+  → to.point: Use a target or a point for to, not both
+{"action":"drag","observation":"obs-1","target":{"ref":"e1"},"to":{"point":{"x":1,"y":1}}}
+  → screenshot: Required for drag
+{"action":"click","observation":"obs-1","target":{"ref":"e1"},"to":{"target":{"ref":"e2"}}}
+  → to: Only drag takes to
+{"action":"screenshot","point":{"x":1,"y":1},"screenshot":"s"}
+  → point: Only click, hover and drag take a point
+{"action":"click","observation":"obs-1","target":{"name":"Docs"}}
+  → target.role: Use target.ref, or by:"role" with role:"link" / "button" etc.
+{"action":"click","observation":"obs-1","target":{"by":"link","role":"button","name":"Docs"}}
+  → target.role: by:"link" cannot target a different role
+{"action":"click","observation":"obs-1","target":{"ref":""}}
+  → target.ref: Too small: expected string to have >=1 characters
+{"action":"click","observation":"obs-1","target":{"x":1,"y":2}}
+  → target: Unrecognized keys: "x", "y"
+{"action":"observe","extra":true}
+  → (root): Unrecognized key: "extra"
+{}
+  → action: Invalid option: expected one of "navigate"|"observe"|"screenshot"|"click"|"hover"|"drag"|"fill"|"select"|"press"|"scroll"|"tab"|"close"

@@ -1,0 +1,76 @@
+done  {"action":"navigate","url":"https://shop.example/mugs"}
+       → Opened https://shop.example/mugs
+not   {"action":"navigate","url":"https://shop.example/mugs"}
+       → Open https://shop.example/mugs
+done  {"action":"navigate","url":"https://shop.example/mugs","newTab":true}
+       → Opened https://shop.example/mugs in a new tab
+not   {"action":"navigate","url":"https://shop.example/mugs","newTab":true}
+       → Open https://shop.example/mugs in a new tab
+done  {"action":"observe"}
+       → Read the page
+not   {"action":"observe"}
+       → Read the page
+done  {"action":"screenshot"}
+       → Took a screenshot
+not   {"action":"screenshot"}
+       → Take a screenshot
+done  {"action":"click","target":{"ref":"e1"}}
+       → Clicked button "Search"
+not   {"action":"click","target":{"ref":"e1"}}
+       → Click button "Search"
+done  {"action":"click","target":{"ref":"e2"},"count":2}
+       → Double-clicked link "Blue mug"
+not   {"action":"click","target":{"ref":"e2"},"count":2}
+       → Double-click link "Blue mug"
+done  {"action":"click","target":{"ref":"e2"},"button":"right"}
+       → Right-clicked link "Blue mug"
+not   {"action":"click","target":{"ref":"e2"},"button":"right"}
+       → Right-click link "Blue mug"
+done  {"action":"click","point":{"x":120,"y":40},"screenshot":"s1"}
+       → Clicked the point (120, 40) on the screenshot
+not   {"action":"click","point":{"x":120,"y":40},"screenshot":"s1"}
+       → Click the point (120, 40) on the screenshot
+done  {"action":"click","target":{"by":"role","role":"link","name":"Docs"}}
+       → Clicked link "Docs"
+not   {"action":"click","target":{"by":"role","role":"link","name":"Docs"}}
+       → Click link "Docs"
+done  {"action":"hover","target":{"ref":"e2"}}
+       → Pointed at link "Blue mug"
+not   {"action":"hover","target":{"ref":"e2"}}
+       → Point at link "Blue mug"
+done  {"action":"drag","target":{"ref":"e2"},"to":{"point":{"x":300,"y":20}}}
+       → Dragged link "Blue mug" to the point (300, 20)
+not   {"action":"drag","target":{"ref":"e2"},"to":{"point":{"x":300,"y":20}}}
+       → Drag link "Blue mug" to the point (300, 20)
+done  {"action":"drag","point":{"x":1,"y":2},"to":{"target":{"ref":"e1"}}}
+       → Dragged the point (1, 2) on the screenshot to button "Search"
+not   {"action":"drag","point":{"x":1,"y":2},"to":{"target":{"ref":"e1"}}}
+       → Drag the point (1, 2) on the screenshot to button "Search"
+done  {"action":"fill","target":{"ref":"e3"},"value":"a@b.test"}
+       → Typed into textbox "Email"
+not   {"action":"fill","target":{"ref":"e3"},"value":"a@b.test"}
+       → Type into textbox "Email"
+done  {"action":"select","target":{"ref":"e3"},"value":"Blue"}
+       → Chose "Blue" in textbox "Email"
+not   {"action":"select","target":{"ref":"e3"},"value":"Blue"}
+       → Choose "Blue" in textbox "Email"
+done  {"action":"press","target":{"ref":"e3"},"key":"Enter"}
+       → Pressed Enter on textbox "Email"
+not   {"action":"press","target":{"ref":"e3"},"key":"Enter"}
+       → Press Enter on textbox "Email"
+done  {"action":"scroll","direction":"down"}
+       → Scrolled down
+not   {"action":"scroll","direction":"down"}
+       → Scroll down
+done  {"action":"tab","tabId":"tab-2"}
+       → Switched tab
+not   {"action":"tab","tabId":"tab-2"}
+       → Switch tab
+done  {"action":"close"}
+       → Closed its tabs
+not   {"action":"close"}
+       → Close its tabs
+done  {"action":"teleport"}
+       → Invalid command
+not   {"action":"teleport"}
+       → Invalid command
