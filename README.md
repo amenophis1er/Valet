@@ -122,7 +122,12 @@ npm run dev          # rebuild on save; the loaded extension reloads itself
 npm test             # unit tests (Vitest)
 npm run e2e          # end to end in Chromium (Playwright)
 npm run typecheck
+npm run docs         # regenerate docs/actions.md from the action registry
 ```
+
+How it is put together — the layers, the path every action takes, what the
+extension guarantees — is in [docs/architecture.md](docs/architecture.md);
+every action and field is in [docs/actions.md](docs/actions.md).
 
 `npm run dev` builds with inline source maps and watches `src/` and `static/`.
 A change to the panel's files reloads the open panel in place; a change to the
@@ -137,8 +142,10 @@ watcher follows its build: `npm install --no-save ../extension-ai-connect`.
 | --- | --- |
 | `src/background.ts` | The service worker: wires everything together |
 | `src/loop/` | The agent loop, the system prompt, attachments and files |
-| `src/controller/` | Between the model and the browser: validation, evidence, approvals |
-| `src/executor/` | Chrome itself: tabs, observation, input, screenshots |
+| `src/actions/` | The browser tool's contract: one spec per action; the validator, schema and description are built from it |
+| `src/controller/` | Between the model and the browser: evidence, scope, form approvals, failure classes |
+| `src/executor/` | Chrome itself: tabs, observation, screenshots, the debugger |
+| `src/executor/input/` | One file per input action (click, drag, fill…), behind a narrow driver |
 | `src/scope/` | Which sites a run may reach, and network-level containment |
 | `src/panel.ts`, `static/` | The side panel |
 

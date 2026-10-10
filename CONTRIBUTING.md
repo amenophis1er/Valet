@@ -17,6 +17,13 @@ Load `dist/` at chrome://extensions with Developer mode on. In dev builds the
 extension reloads itself when the worker changes and the panel reloads when
 only panel files change.
 
+## How it fits together
+
+Read [docs/architecture.md](docs/architecture.md) first: the layers, the path
+every action takes, and how to add one. The golden files in
+`src/actions/golden` show what the model and the owner read; a change to them
+is part of the change, reviewed like code.
+
 ## Pull requests
 
 - Keep a PR to one change, with tests for what it changes. CI runs typecheck,

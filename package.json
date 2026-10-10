@@ -33,7 +33,8 @@
     "test": "vitest run",
     "e2e": "playwright test",
     "dev": "node scripts/dev.mjs",
-    "screenshots": "playwright test -c scripts/screenshots"
+    "screenshots": "playwright test -c scripts/screenshots",
+    "docs": "vitest run src/actions/reference.test.ts -u"
   },
   "dependencies": {
     "@amenophis1er/extension-ai-connect": "git+https://github.com/amenophis1er/extension-ai-connect.git#b74715f8627e2da53019f09f115779cf0dd446f2",
