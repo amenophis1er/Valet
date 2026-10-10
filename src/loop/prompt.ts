@@ -37,8 +37,13 @@ export function goalMessage(goal: string, handed: { title: string; url: string }
 
 /** How many of the newest observations keep their full page content. */
 const FULL_OBSERVATIONS = 3;
-/** How many of the newest parts of page text (read) stay in full: enough to write from, not the whole web. */
-const FULL_READS = 4;
+/**
+ * How much page text (read) stays in full, newest first: a long article, about
+ * ten parts. Past it the oldest parts drop to a line saying what they were; a
+ * count of parts made a model re-read the start of an article it was halfway
+ * through, so the budget is in characters and generous.
+ */
+const READ_BUDGET = 120_000;
 
 /**
  * Compact old page evidence: only the newest observations keep tree, targets
@@ -55,7 +60,14 @@ export function historyView(history: AIMessage[]): AIMessage[] {
     if (message.content.includes('"read":{"url":')) withText.push(index);
   });
   const keepPages = new Set(withPages.slice(-FULL_OBSERVATIONS));
-  const keepText = new Set(withText.slice(-FULL_READS));
+  const keepText = new Set<number>();
+  let spent = 0;
+  for (const index of [...withText].reverse()) {
+    spent += String(history[index]!.content).length;
+    // The newest part always stays, whatever its size.
+    if (spent > READ_BUDGET && keepText.size > 0) break;
+    keepText.add(index);
+  }
   return history.map((message, index) => {
     if (message.role !== 'tool' || typeof message.content !== 'string') return message;
     const oldPage = withPages.includes(index) && !keepPages.has(index);
@@ -66,7 +78,7 @@ export function historyView(history: AIMessage[]): AIMessage[] {
       const observation = result['observation'] as { id?: string; url?: string; title?: string } | undefined;
       if (oldPage && observation) result['observation'] = { url: observation.url, title: observation.title, compacted: true };
       const read = result['read'] as { url?: string; title?: string; part?: number; parts?: number } | undefined;
-      if (oldText && read) result['read'] = { url: read.url, title: read.title, part: read.part, parts: read.parts, compacted: 'This part\'s text is no longer shown. Read it again if you need it.' };
+      if (oldText && read) result['read'] = { url: read.url, title: read.title, part: read.part, parts: read.parts, compacted: 'You read this part earlier; its text is no longer shown, to save space. Do not read it again just to have it: work from what you noted. Read it again only for a detail the task needs.' };
       return { ...message, content: JSON.stringify(result) };
     } catch {
       return message;

@@ -5,7 +5,8 @@ Start with {action:"navigate",url:"https://..."}: it goes there in the tab you a
 With newTab:true it opens the url in a new tab of this conversation instead and works there from then on; use it to keep the page you are on, or when the owner asks for another tab.
 Every result carries a fresh observation: id, url, title, an aria-style tree, targets with refs like e12, and the tabs of this conversation. observe reads the page again: a fresh observation with new refs, when the page may have changed on its own. read gives you the text of the current page — its main content, headings, lists and tables, without menus or refs — in parts of a few thousand words.
 Use it whenever the content is the task (summarize, answer from, quote or extract a page): an observation is cut to fit and is for acting, not reading.
-A result says which part it is and how many there are; read the next part until you have what the task needs before you answer. screenshot shows you the visible part of the current tab as an image, and shows it to the owner too; use it when layout, images or charts matter, not instead of observe.
+A result says which part it is and how many there are; read the next part until you have what the task needs before you answer.
+On a very long page the oldest parts drop out of view: note the key facts in a line as you go, and do not read a part twice. screenshot shows you the visible part of the current tab as an image, and shows it to the owner too; use it when layout, images or charts matter, not instead of observe.
 Parts of the page from sites outside this run are painted grey.
 Prefer {action:"click",observation:"COPY_LATEST_ID",target:{ref:"e12"}}; copy actual refs, never invent them.
 Semantic links use by:"role",role:"link",name:"...". click takes count:2 for a double-click — the way many apps open an item in a list (files in Drive, rows in a table) — and button:"right" for a context menu.

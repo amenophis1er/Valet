@@ -136,6 +136,38 @@ describe('a run', () => {
     expect(wellFormed(h.saved()!.history)).toBe(true);
   });
 
+  it('gives a reply cut off at the length limit one more try, with more room and a note to be brief — once per run', async () => {
+    const h = harness([
+      () => ({ ok: true, text: 'Here is the summa', stopReason: 'length' }),
+      () => ({ ok: true, text: 'Summary, shorter.', stopReason: 'end' }),
+    ]);
+    await h.loop.run('Summarize', 42);
+    expect(h.requests.map((request) => request.maxTokens)).toEqual([8_000, 16_000]);
+    expect(String(h.requests[1]!.messages.at(-1)!.content)).toMatch(/cut off at the length limit before it was complete, and nothing in it was run/);
+    expect(h.loop.state.transcript.some((entry) => entry.kind === 'notice' && /Asking it to finish, more briefly/.test(entry.text))).toBe(true);
+    expect(h.loop.state.transcript.at(-1)).toMatchObject({ kind: 'agent', text: 'Summary, shorter.' });
+    expect(wellFormed(h.saved()!.history)).toBe(true);
+
+    const twice = harness([
+      () => ({ ok: true, text: 'cut', stopReason: 'length' }),
+      () => ({ ok: true, text: 'cut again', stopReason: 'length' }),
+    ]);
+    await twice.loop.run('Summarize', 42);
+    expect(twice.requests).toHaveLength(2);
+    expect(twice.loop.state.status).toBe('idle');
+  });
+
+  it('falls back to the usual cap when the provider refuses the raised one', async () => {
+    const h = harness([
+      () => ({ ok: true, text: 'cut', stopReason: 'length' }),
+      () => ({ ok: false, error: 'max_tokens is too large: 16000. This model supports at most 8192 completion tokens.' }),
+      () => ({ ok: true, text: 'Done briefly.', stopReason: 'end' }),
+    ]);
+    await h.loop.run('Summarize', 42);
+    expect(h.requests.map((request) => request.maxTokens)).toEqual([8_000, 16_000, 8_000]);
+    expect(h.loop.state.transcript.at(-1)).toMatchObject({ kind: 'agent', text: 'Done briefly.' });
+  });
+
   it('answers every call of a batch: after a refusal the rest are skipped, not dispatched', async () => {
     const h = harness([
       callTurn({ id: 'a', args: { action: 'navigate', url: 'https://shop.test/' } }),

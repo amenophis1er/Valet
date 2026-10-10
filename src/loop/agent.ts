@@ -43,6 +43,12 @@ export const MAX_ACTIONS = 40;
 export const MAX_RUN_MS = 20 * 60_000;
 /** Waits before sending a model request again after a dropped connection or a server failure. */
 const RETRY_DELAYS_MS = [2_000, 5_000];
+/** The output cap of a model turn, and the one a turn gets after a reply was cut off at it. */
+const MAX_TOKENS = 8_000;
+const RAISED_MAX_TOKENS = 16_000;
+/** What the model is told after its reply was cut off: nothing of it ran, do it again more briefly. */
+const CUT_OFF = 'Your last reply was cut off at the length limit before it was complete, and nothing in it was run. '
+  + 'Do it again, more briefly: if you were writing a file, write it in one save_file call with shorter content; keep any thinking short.';
 /** chrome.storage.session holds 10 MB: past this, the conversation must start over before the next model turn. */
 const MAX_STATE_CHARS = 4_000_000;
 const TOO_LONG = 'This conversation is too long to keep going. Start a new conversation (the + button) to continue.';
@@ -424,6 +430,9 @@ export class AgentLoop {
     const s = this.#state;
     const deps = this.#deps;
     let visionProbe = false;
+    /** The output cap; raised once in a run after a reply was cut off at it. */
+    let maxTokens = MAX_TOKENS;
+    let cutOff = 0;
     try {
       for (;;) {
         // Guards before every model turn, not only before calls.
@@ -444,7 +453,7 @@ export class AgentLoop {
           const sent = this.#now();
           const answer = await deps.chat({
             system: SYSTEM_PROMPT, messages, tools: [BROWSER_TOOL, SAVE_FILE_TOOL],
-            connectionId: connection.id, connectionRevision: connection.revision, model: connection.model, maxTokens: 8000,
+            connectionId: connection.id, connectionRevision: connection.revision, model: connection.model, maxTokens,
           }, { signal: this.#abort!.signal });
           this.#trace.record({ kind: 'model-response', turn, ms: this.#now() - sent, ok: answer.ok,
             ...(answer.stopReason ? { stopReason: answer.stopReason } : {}), ...(answer.text ? { text: answer.text } : {}),
@@ -464,6 +473,11 @@ export class AgentLoop {
           result = await ask();
         }
         if (this.#life.stopRequested) return this.#end('Stopped.');
+        // A raised cap the provider refuses (a model with a smaller output limit): back to the usual one.
+        if (!result.ok && maxTokens > MAX_TOKENS && /token|length|max/i.test(result.error ?? '')) {
+          maxTokens = MAX_TOKENS;
+          result = await ask();
+        }
         // A model that cannot take images fails the whole request: go on without them.
         if (!result.ok && !s.noVision && IMAGE_ERROR.test(result.error ?? '') && this.#view().some(hasImage)) {
           s.noVision = true;
@@ -482,6 +496,16 @@ export class AgentLoop {
           ...(result.providerState !== undefined ? { providerState: result.providerState } : {}) });
         if (result.text) s.transcript.push({ kind: 'agent', text: result.text });
         if (!result.toolCalls) {
+          // Cut off before it finished (a long file, or a model that thinks at length): once per run, it gets
+          // more room and is asked to do it again, more briefly. Nothing of the cut reply was run.
+          if (result.stopReason === 'length' && cutOff < 1) {
+            cutOff += 1;
+            maxTokens = RAISED_MAX_TOKENS;
+            this.#note('The model\'s answer was cut off at its length limit. Asking it to finish, more briefly.');
+            s.history.push({ role: 'user', content: CUT_OFF });
+            await this.#save();
+            continue;
+          }
           if (result.stopReason === 'length') this.#note('The model\'s answer was cut off at its length limit.');
           if (result.stopReason === 'refusal') this.#note('The model declined to continue.');
           // A message the owner sent while this answer was being written: the model hears it before the run ends.
