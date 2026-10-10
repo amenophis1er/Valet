@@ -87,8 +87,10 @@ describe('export and import', () => {
 
   it('names what is wrong with a file', () => {
     expect(importSkills('nope', [])).toEqual({ error: expect.stringContaining('not JSON') });
-    expect(importSkills('{"skills": 3}', [])).toEqual({ error: expect.stringContaining('not a skills export') });
-    expect(importSkills('{"skills": [{"name": "", "text": ""}]}', [])).toEqual({ error: expect.stringContaining('No skills') });
+    expect(importSkills('{"valetSkills": 1, "skills": 3}', [])).toEqual({ error: expect.stringContaining('not a Valet skills export') });
+    // Only Valet's own exports: a file under another name is not read.
+    expect(importSkills('{"otherSkills": 1, "skills": [{"name": "a", "text": "b"}]}', [])).toEqual({ error: expect.stringContaining('not a Valet skills export') });
+    expect(importSkills('{"valetSkills": 1, "skills": [{"name": "", "text": ""}]}', [])).toEqual({ error: expect.stringContaining('No skills') });
     const many = Array.from({ length: MAX_SKILLS }, (_, i) => skill({ id: `s${i}`, name: `S${i}` }));
     expect(importSkills(exportSkills([skill({ name: 'One more' })]), many)).toEqual({ error: expect.stringContaining('at most') });
   });

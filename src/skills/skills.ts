@@ -156,7 +156,7 @@ export function importSkills(json: string, existing: Skill[]): { skills: Skill[]
   let parsed: unknown;
   try { parsed = JSON.parse(json); } catch { return { error: 'This file is not a skills export (not JSON).' }; }
   const box = parsed as { valetSkills?: unknown; skills?: unknown } | null;
-  if (!box || typeof box !== 'object' || !Array.isArray(box.skills)) return { error: 'This file is not a skills export.' };
+  if (!box || typeof box !== 'object' || box.valetSkills === undefined || !Array.isArray(box.skills)) return { error: 'This file is not a Valet skills export.' };
   const merged = [...existing];
   let added = 0;
   let replaced = 0;
