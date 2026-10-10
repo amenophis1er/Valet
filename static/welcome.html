@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Welcome to Errand</title>
+  <link rel="stylesheet" href="panel.css">
+  <style>
+    body { height: auto; min-height: 100vh; display: block; }
+    main { max-width: 640px; margin: 0 auto; padding: 40px 20px 60px; display: flex; flex-direction: column; gap: 18px; }
+    .hero { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+    .hero .empty-mark { margin: 0; width: 52px; height: 52px; border-radius: 14px; }
+    .hero .empty-mark svg { width: 26px; height: 26px; }
+    .hero h1 { margin: 0; font-size: 24px; }
+    .hero p { margin: 2px 0 0; }
+    .step { display: flex; gap: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+    .step .n { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--accent-fg); display: grid; place-items: center; font-weight: 700; font-size: 14px; }
+    .step .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+    .step h2 { margin: 0; font-size: 16px; }
+    .step p { margin: 0; }
+    .step .sheet { margin-top: 4px; }
+    .examples { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+    .examples li { color: var(--fg); }
+    .examples code { font-family: inherit; font-size: inherit; background: var(--soft); padding: 2px 6px; border-radius: 6px; }
+    .ready { font-size: 13px; }
+    .ready.ok { color: var(--ok); font-weight: 600; }
+    .foot { text-align: center; font-size: 12.5px; }
+    kbd { font: inherit; background: var(--soft); border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="hero">
+      <div class="empty-mark" aria-hidden="true"><svg viewBox="0 0 22 22"><path d="M2 2 L2 18 L7 13.5 L10.5 20 L13.5 18.5 L10 12 L17 12 Z" fill="#fff" /></svg></div>
+      <div>
+        <h1>Welcome to Errand</h1>
+        <p class="muted">An AI agent that works in your own Chrome, with the model you bring. Three things and you're set.</p>
+      </div>
+    </div>
+
+    <section class="step">
+      <div class="n" aria-hidden="true">1</div>
+      <div class="body">
+        <h2>Open the side panel</h2>
+        <p>Errand lives in Chrome's side panel, next to whatever page you're on. Click the Errand icon in the toolbar to open it — pin it from the puzzle-piece menu <span aria-hidden="true">🧩</span> so it stays there.</p>
+        <div class="row">
+          <button id="open-panel" class="primary">Open the side panel</button>
+          <span id="open-status" class="muted ready" role="status"></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="step">
+      <div class="n" aria-hidden="true">2</div>
+      <div class="body">
+        <h2>Connect a model</h2>
+        <p>Sign in with a Claude or ChatGPT subscription, use an API key, or point it at Ollama on this computer. Keys and sign-ins stay encrypted in the extension; page content goes only to the model you pick.</p>
+        <div class="sheet" id="connections-sheet"></div>
+        <p id="ready" class="muted ready" role="status">Once connected, pick a model on its row.</p>
+      </div>
+    </section>
+
+    <section class="step">
+      <div class="n" aria-hidden="true">3</div>
+      <div class="body">
+        <h2>Give it an errand</h2>
+        <p>Open any page, then say what you want done in the panel. It works in that tab while you watch — a glowing border and its own cursor — and asks before it opens a new site or submits a form. Some first errands:</p>
+        <ul class="examples">
+          <li><code>Find the cheapest blue ceramic mug on this page and tell me its price.</code></li>
+          <li><code>Take a screenshot of this page and describe what's above the fold.</code></li>
+          <li><code>Fill this form with my name, Amen, and stop before submitting.</code></li>
+        </ul>
+        <p class="muted">Under the message box: <strong>Ask/Auto</strong> sets how often it checks with you, <strong>Learn</strong> makes it explain and wait before every step, and <kbd>@</kbd> brings in a skill — a note you write once for a site (Settings → Skills).</p>
+        <div class="row">
+          <button id="done" class="primary">Done — close this tab</button>
+        </div>
+      </div>
+    </section>
+
+    <p class="foot muted">You can open this guide again from Settings in the side panel.</p>
+  </main>
+  <script type="module" src="welcome.js"></script>
+</body>
+</html>

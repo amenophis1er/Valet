@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Errand — microphone</title>
+  <link rel="stylesheet" href="panel.css">
+  <style>
+    body { align-items: center; justify-content: center; padding: 24px; text-align: center; gap: 10px; }
+    h1 { font-size: 20px; margin: 0; }
+    p { margin: 0; max-width: 420px; }
+  </style>
+</head>
+<body>
+  <h1>Microphone for dictation</h1>
+  <p id="status">Chrome is asking whether Errand may use your microphone. Choose Allow.</p>
+  <p class="muted">It is used only while the mic button in the side panel is on, to turn your speech into text in the message box.</p>
+  <script type="module" src="mic.js"></script>
+</body>
+</html>

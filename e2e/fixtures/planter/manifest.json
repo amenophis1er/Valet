@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "Planter (e2e fixture)",
+  "version": "0.0.1",
+  "description": "Stands in for a password manager: plants a frame of its own in a page the moment a field is focused.",
+  "content_scripts": [{ "matches": ["http://*/*", "https://*/*"], "js": ["plant.js"], "run_at": "document_idle", "all_frames": false }],
+  "web_accessible_resources": [{ "resources": ["menu.html"], "matches": ["http://*/*", "https://*/*"] }]
+}
