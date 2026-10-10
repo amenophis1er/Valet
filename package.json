@@ -1,0 +1,50 @@
+{
+  "name": "valet",
+  "version": "0.1.0",
+  "description": "An AI agent that works in your own Chrome, with the model you bring. No server, no account, no companion app.",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "Amen",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amenophis1er/Valet.git"
+  },
+  "homepage": "https://github.com/amenophis1er/Valet#readme",
+  "bugs": {
+    "url": "https://github.com/amenophis1er/Valet/issues"
+  },
+  "keywords": [
+    "chrome-extension",
+    "manifest-v3",
+    "browser-agent",
+    "ai-agent",
+    "llm",
+    "tool-calling",
+    "byok",
+    "side-panel"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "e2e": "playwright test",
+    "dev": "node scripts/dev.mjs",
+    "screenshots": "playwright test -c scripts/screenshots"
+  },
+  "dependencies": {
+    "@amenophis1er/extension-ai-connect": "git+https://github.com/amenophis1er/extension-ai-connect.git#b74715f8627e2da53019f09f115779cf0dd446f2",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.10.2",
+    "esbuild": "^0.28.2",
+    "jsdom": "^30.1.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.2"
+  }
+}
