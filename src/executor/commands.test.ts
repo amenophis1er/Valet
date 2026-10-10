@@ -666,11 +666,22 @@ describe('watched tabs, stops and frames', () => {
     const { commands, located, goneDocuments } = await opened();
     await commands.run(command('observe'));
     await commands.run(command('fill', { target: { ref: 'e3' }, value: 'a@b.test' }));
-    expect(located).toEqual(['doc-0']);
+    // A look at the field, then the focus and clear: both in the ref's own document.
+    expect(located).toEqual(['doc-0', 'doc-0']);
     goneDocuments.add('doc-0');
     const cancel = new Cancellation();
     await expect(commands.run(command('click', { target: { ref: 'e1' } }), cancel)).rejects.toThrow(/Stale page observation/);
     expect(cancel.dispatched).toBe(false);
+  });
+
+  it('refuses to fill a password field before touching anything: a refusal, not an unknown outcome', async () => {
+    const { commands, field, sent } = await opened();
+    await commands.run(command('observe'));
+    field.password = true;
+    const cancel = new Cancellation();
+    await expect(commands.run(command('fill', { target: { ref: 'e3' }, value: 'hunter2' }), cancel)).rejects.toThrow(/Passwords are entered by the owner/);
+    expect(cancel.dispatched).toBe(false);
+    expect(sent).toEqual([]);
   });
 
   it('marks a fill whose debugger will not attach as dispatched: the field was already cleared', async () => {

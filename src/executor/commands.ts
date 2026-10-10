@@ -973,11 +973,11 @@ export class BrowserCommands implements Executor {
     return frame?.result;
   }
 
-  async #locate(ref: Ref, options: { focus?: boolean; clear?: boolean; mark?: boolean; still?: boolean } = {}): Promise<{ point?: { x: number; y: number }; setByValue?: boolean; keyByKey?: boolean; multiline?: boolean }> {
-    const result = await this.#script<[string, { focus?: boolean; clear?: boolean; mark?: boolean; still?: boolean }], { ok: boolean; reason?: string; point?: { x: number; y: number }; setByValue?: boolean; keyByKey?: boolean; multiline?: boolean }>(
+  async #locate(ref: Ref, options: { focus?: boolean; clear?: boolean; mark?: boolean; still?: boolean } = {}): Promise<{ point?: { x: number; y: number }; setByValue?: boolean; keyByKey?: boolean; multiline?: boolean; password?: boolean }> {
+    const result = await this.#script<[string, { focus?: boolean; clear?: boolean; mark?: boolean; still?: boolean }], { ok: boolean; reason?: string; point?: { x: number; y: number }; setByValue?: boolean; keyByKey?: boolean; multiline?: boolean; password?: boolean }>(
       ref, locateRef, [ref.local, options]);
     if (!result?.ok) throw new PreconditionError(result?.reason ?? 'The referenced element changed or disappeared.');
-    return { point: result.point, setByValue: result.setByValue === true, keyByKey: result.keyByKey === true, multiline: result.multiline === true };
+    return { point: result.point, setByValue: result.setByValue === true, keyByKey: result.keyByKey === true, multiline: result.multiline === true, password: result.password === true };
   }
 
   /**

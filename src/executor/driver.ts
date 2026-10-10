@@ -26,12 +26,14 @@ export type Send = (method: string, params?: unknown) => Promise<unknown>;
 export type Pace = 'fast' | 'natural';
 
 /** What the page side says about an element it was asked to act on. */
-export interface Located { point?: Point; setByValue?: boolean; keyByKey?: boolean; multiline?: boolean }
+export interface Located { point?: Point; setByValue?: boolean; keyByKey?: boolean; multiline?: boolean; password?: boolean }
 
 /** The debugger was refused on this tab because of another extension's frame; `sent` says how much of the action had gone through it before. */
 export class DebuggerKeptOut extends Error {
   constructor(message: string, readonly sent: number) { super(message); }
 }
+/** Why a password field is never filled. The page side says the same if the field changed under the check (content.ts). */
+export const PASSWORD = 'Passwords are entered by the owner, never by the agent. Ask the owner to sign in in this tab.';
 export const DEBUGGER_KEPT_OUT = 'Another extension has a frame of its own in this page (a password manager\'s menu, for instance), and Chrome keeps the agent\'s debugger out while it is there.';
 
 export interface Driver {

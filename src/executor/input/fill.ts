@@ -1,6 +1,6 @@
 import { PreconditionError } from '../protocol.js';
 import { typeRef } from '../page.js';
-import { arg, type InputAction } from '../driver.js';
+import { PASSWORD, arg, type InputAction } from '../driver.js';
 import { typeKey } from './motion.js';
 
 /** At natural pace, typed key by key up to this many characters; the rest is inserted at once. */
@@ -10,12 +10,12 @@ const MAX_KEYED = 400;
 export const fill: InputAction = async (driver, command, cancel) => {
   const { ref } = await driver.aim(command, cancel);
   const value = arg(command, 'value') ?? '';
+  // Read the field before anything is touched, so a refusal here is a plain refusal: nothing was dispatched.
+  const { multiline, password } = await driver.locate(ref, { still: true });
+  if (password) throw new PreconditionError(PASSWORD);
   // A line break typed into a one-line field is an Enter, which can submit the form without the
-  // approval a press gets: refused before anything is touched. (A textarea takes line breaks.)
-  if (/[\r\n]/.test(value)) {
-    const { multiline } = await driver.locate(ref, { still: true });
-    if (!multiline) throw new PreconditionError('That field takes one line; a line break in the value would press Enter. Fill it without the line break, then use press with key Enter if you mean to submit.');
-  }
+  // approval a press gets. (A textarea takes line breaks.)
+  if (/[\r\n]/.test(value) && !multiline) throw new PreconditionError('That field takes one line; a line break in the value would press Enter. Fill it without the line break, then use press with key Enter if you mean to submit.');
   // Focusing and clearing the field is already a change to the page.
   cancel.dispatch();
   const { setByValue, keyByKey, point } = await driver.locate(ref, { focus: true, clear: true });

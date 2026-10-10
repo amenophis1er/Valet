@@ -127,11 +127,13 @@ test('fills a field through the debugger, and calls a fill whose attach fails af
   }
 });
 
-test('refuses to fill a password field', async () => {
+test('refuses to fill a password field: a refusal, nothing typed', async () => {
   const observation = (await run('s-password', { action: 'navigate', url: `${fixture.main}/shop` }))['observation'];
   const password = observation.targets.find((target: { name: string }) => /Password/.test(target.name));
   const result = await run('s-password', { action: 'fill', observation: observation.id, target: { ref: password.ref }, value: 'hunter2' });
-  expect(JSON.stringify(result)).toMatch(/Passwords are entered by the owner/);
+  // A plain refusal, nothing typed: not an "outcome unknown" that would pause the run.
+  expect(result, JSON.stringify(result).slice(0, 300)).toMatchObject({ refused: expect.stringMatching(/Passwords are entered by the owner/) });
+  expect(result['completed']).toBeUndefined();
 });
 
 test('works in the page the owner has open once it is handed over', async () => {
