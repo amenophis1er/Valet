@@ -69,9 +69,13 @@ export async function startFixture(): Promise<Fixture> {
         <label>Volume <input type="range" name="volume" min="0" max="100" value="0" style="width:300px"></label>
         <p id="hovered">not hovered</p>
         <button id="target" type="button" style="margin-top:320px">Hover me</button>
+        <div id="file" role="button" tabindex="0" style="margin-top:12px;width:160px;padding:6px;border:1px solid #999">report.pdf</div>
+        <p id="opened">closed</p>
         <script>
           document.getElementById('target').addEventListener('mouseenter', () => { document.getElementById('hovered').textContent = 'hovered'; });
           document.getElementById('target').addEventListener('click', () => { document.getElementById('hovered').textContent = 'clicked'; });
+          document.getElementById('file').addEventListener('dblclick', () => { document.getElementById('opened').textContent = 'opened by double-click'; });
+          document.getElementById('file').addEventListener('contextmenu', (event) => { event.preventDefault(); document.getElementById('opened').textContent = 'menu by right click'; });
         </script>
       </main>`));
       return;

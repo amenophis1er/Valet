@@ -37,6 +37,10 @@ export const commandSchema = z.object({
   newTab: z.boolean().optional(),
   target: target.optional(),
   point: point.optional(),
+  /** click: 2 for a double-click. */
+  count: z.number().int().min(1).max(2).optional(),
+  /** click: the right button opens a context menu. */
+  button: z.enum(['left', 'right']).optional(),
   to: end.optional(),
   screenshot: z.string().max(80).optional(),
   value: z.string().max(10_000).optional(),
@@ -50,6 +54,9 @@ export const commandSchema = z.object({
   };
   if (input.action === 'navigate') require('url');
   if (input.newTab !== undefined && input.action !== 'navigate') ctx.addIssue({ code: 'custom', path: ['newTab'], message: 'Only navigate takes newTab' });
+  if (input.count !== undefined && input.action !== 'click') ctx.addIssue({ code: 'custom', path: ['count'], message: 'Only click takes count' });
+  if (input.button !== undefined && input.action !== 'click') ctx.addIssue({ code: 'custom', path: ['button'], message: 'Only click takes button' });
+  if (input.count === 2 && input.button === 'right') ctx.addIssue({ code: 'custom', path: ['count'], message: 'A double-click is with the left button' });
   const pointed = ['click', 'hover', 'drag'].includes(input.action);
   if (pointed) {
     if (!input.target && !input.point) ctx.addIssue({ code: 'custom', path: ['target'], message: `${input.action} needs a target (a ref from observation.targets) or a point on the latest screenshot` });
@@ -107,6 +114,8 @@ export const WIRE_SCHEMA = {
       description: 'click, hover and drag, instead of a target: a point on the latest screenshot, in that image\'s pixels (x from the left, y from the top). For what the observation cannot name — a canvas, a map, a chart, a custom control. Needs screenshot.',
       properties: { x: { type: 'integer', minimum: 0, maximum: 10_000 }, y: { type: 'integer', minimum: 0, maximum: 10_000 } },
     },
+    count: { type: 'integer', minimum: 1, maximum: 2, description: 'click only: 2 for a double-click (open a file in a list, select a word). Default 1.' },
+    button: { type: 'string', enum: ['left', 'right'], description: 'click only: "right" opens the context menu (then click an item in it). Default left.' },
     to: {
       type: 'object',
       additionalProperties: false,
@@ -131,6 +140,7 @@ export const TOOL_DESCRIPTION = [
   'Start with {action:"navigate",url:"https://..."}: it goes there in the tab you are working in. With newTab:true it opens the url in a new tab of this conversation instead and works there from then on; use it to keep the page you are on, or when the owner asks for another tab. Every result carries a fresh observation: id, url, title, an aria-style tree, targets with refs like e12, and the tabs of this conversation.',
   'Prefer {action:"click",observation:"COPY_LATEST_ID",target:{ref:"e12"}}; copy actual refs, never invent them. Semantic links use by:"role",role:"link",name:"...".',
   'fill replaces the value of a non-password text field. select picks an option by its label, text or value. press sends a listed key to a target. scroll moves the page up or down. tab switches to a tabId from observation.tabs. A link that opens a new tab opens one of yours: observe then reads it.',
+  'click takes count:2 for a double-click — the way many apps open an item in a list (files in Drive, rows in a table) — and button:"right" for a context menu. A menu item that opens a submenu: hover it, observe, then click the item in the submenu.',
   'hover moves the mouse onto a target or point without clicking (menus that open on hover, tooltips). drag presses on a target or point and releases on `to` (a target or point): sliders, maps, reordering, drawing. Frames from the same site are reachable; frames from other sites are not.',
   'screenshot shows you the visible part of the current tab as an image, and shows it to the owner too; use it when layout, images or charts matter, not instead of observe. Parts of the page from sites outside this run are painted grey.',
   'When a screenshot shows something the observation cannot name (a canvas, a map, a chart, a custom control), click it by point: {action:"click",observation:"COPY_LATEST_ID",screenshot:"COPY_SCREENSHOT_ID",point:{x,y}} in the image\'s pixels. Refs are exact; points are for what has no ref. A grey area cannot be clicked.',

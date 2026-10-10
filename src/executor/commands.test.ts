@@ -1216,3 +1216,24 @@ describe('Learning: the bubble and the preview', () => {
     expect(page.paints).toEqual([]);
   });
 });
+
+describe('double and right clicks', () => {
+  const mouse = (sent: Array<{ method: string; params?: unknown }>) => sent.filter((entry) => entry.method === 'Input.dispatchMouseEvent').map((entry) => entry.params as { type: string; button: string; clickCount: number });
+
+  it('a double-click presses twice, the second counted as the second', async () => {
+    const { commands, sent } = await opened();
+    await commands.run(command('observe'));
+    await commands.run(command('click', { target: { ref: 'e2' }, count: 2 }));
+    const presses = mouse(sent).filter((event) => event.type !== 'mouseMoved');
+    expect(presses.map((event) => `${event.type}:${event.clickCount}`)).toEqual(['mousePressed:1', 'mouseReleased:1', 'mousePressed:2', 'mouseReleased:2']);
+    expect(presses.every((event) => event.button === 'left')).toBe(true);
+  });
+
+  it('a right click presses the right button once', async () => {
+    const { commands, sent } = await opened();
+    await commands.run(command('observe'));
+    await commands.run(command('click', { target: { ref: 'e2' }, button: 'right' }));
+    const presses = mouse(sent).filter((event) => event.type !== 'mouseMoved');
+    expect(presses.map((event) => `${event.type}:${event.button}`)).toEqual(['mousePressed:right', 'mouseReleased:right']);
+  });
+});

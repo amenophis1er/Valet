@@ -365,6 +365,15 @@ describe('form submissions', () => {
     expect(await denied.controller.run({ action: 'click', observation: observationOf(nav2)!.id, target: { ref: 'e1' } })).toMatchObject({ refused: expect.stringMatching(/denied this form submission/) });
   });
 
+  it('never asks about a right click: it opens a menu, it submits nothing', async () => {
+    const h = withSubmit({ facts: [fingerprint()], decisions: [] });
+    const observed = observationOf(await h.controller.run({ action: 'navigate', url: 'https://example.test/' }))!.id;
+    const result = await h.controller.run({ action: 'click', observation: observed, target: { ref: 'e1' }, button: 'right' });
+    expect(h.asked).toEqual([]);
+    expect(result).toMatchObject({ completed: true });
+    expect(h.ran.at(-1)).toMatchObject({ name: 'click', args: { button: 'right' } });
+  });
+
   it('does not ask for a click that submits nothing', async () => {
     const h = withSubmit({ facts: [null], decisions: [] });
     const nav = await h.controller.run({ action: 'navigate', url: 'https://example.test/' });

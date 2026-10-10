@@ -55,6 +55,11 @@ const FIXTURES: unknown[] = [
   { action: 'click', observation: OK, target: { ref: 'e1', frame: 10 } },
   { action: 'click', observation: OK, screenshot: 'shot-1', point: { x: 120, y: 40 } },
   { action: 'hover', observation: OK, target: { ref: 'e1' } },
+  { action: 'click', observation: OK, target: { ref: 'e1' }, count: 2 },
+  { action: 'click', observation: OK, target: { ref: 'e1' }, button: 'right' },
+  { action: 'click', observation: OK, screenshot: 'shot-1', point: { x: 1, y: 2 }, count: 2 },
+  { action: 'click', observation: OK, target: { ref: 'e1' }, count: 3 },
+  { action: 'click', observation: OK, target: { ref: 'e1' }, button: 'middle' },
   { action: 'hover', observation: OK, screenshot: 'shot-1', point: { x: 1, y: 2 } },
   { action: 'drag', observation: OK, target: { ref: 'e1' }, to: { target: { ref: 'e2' } } },
   { action: 'drag', observation: OK, screenshot: 'shot-1', point: { x: 1, y: 2 }, to: { point: { x: 3, y: 4 } } },
@@ -94,6 +99,9 @@ const FIXTURES: unknown[] = [
   { action: 'drag', observation: OK, target: { ref: 'e1' }, to: { target: { ref: 'e2' }, point: { x: 1, y: 2 } } },
   { action: 'drag', observation: OK, target: { ref: 'e1' }, to: { point: { x: 3, y: 4 } } },
   { action: 'hover', observation: OK },
+  { action: 'hover', observation: OK, target: { ref: 'e1' }, count: 2 },
+  { action: 'fill', observation: OK, target: { ref: 'e1' }, value: 'x', button: 'right' },
+  { action: 'click', observation: OK, target: { ref: 'e1' }, count: 2, button: 'right' },
   { action: 'click', observation: OK, target: { ref: 'e1' }, to: { target: { ref: 'e2' } } },
 ];
 

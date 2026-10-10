@@ -173,7 +173,10 @@ function describe(args: Record<string, unknown> | undefined, targets: ReadonlyAr
     case 'press': return `${verb('Pressed', 'Press')} ${String(args['key'] ?? '')} on ${what}`;
     case 'scroll': return `${verb('Scrolled', 'Scroll')} ${String(args['direction'] ?? '')}`;
     case 'tab': return verb('Switched tab', 'Switch tab');
-    case 'click': return `${verb('Clicked', 'Click')} ${where}`;
+    case 'click': {
+      const how = args['button'] === 'right' ? verb('Right-clicked', 'Right-click') : args['count'] === 2 ? verb('Double-clicked', 'Double-click') : verb('Clicked', 'Click');
+      return `${how} ${where}`;
+    }
     case 'hover': return `${verb('Pointed at', 'Point at')} ${where}`;
     case 'drag': {
       const end = args['to'] as { target?: { ref?: string; name?: string; role?: string }; point?: { x?: number; y?: number } } | undefined;

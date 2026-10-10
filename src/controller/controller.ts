@@ -300,7 +300,8 @@ export class RunController {
    * — a value, the destination — the owner is asked again.
    */
   async #submission(command: BrowserCommand, cancel: Cancellation): Promise<ToolResult | undefined> {
-    const via = command.action === 'click' ? 'click' : command.action === 'press' && command.key === 'Enter' ? 'enter' : command.action === 'press' && command.key === 'Space' ? 'space' : undefined;
+    // A right click opens a menu; it never activates a button or submits a form.
+    const via = command.action === 'click' && command.button === 'right' ? undefined : command.action === 'click' ? 'click' : command.action === 'press' && command.key === 'Enter' ? 'enter' : command.action === 'press' && command.key === 'Space' ? 'space' : undefined;
     if (!via || !command.target || !this.#executor.submitFacts || !this.#gate.submitVerdict || !this.#gate.askSubmit) return undefined;
     // A stale or vanished target is left to the executor's own refusal, which
     // comes before any dispatch. Any other failure to read the form fails

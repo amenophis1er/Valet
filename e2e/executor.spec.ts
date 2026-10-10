@@ -312,3 +312,17 @@ test('a link that opens a new tab: the tab becomes the conversation\'s, and the 
   await run(session, { action: 'close' });
   await page.close();
 });
+
+test('double-clicks and right-clicks: a page sees dblclick and contextmenu', async () => {
+  let observation = (await run('s-clicks', { action: 'navigate', url: `${fixture.main}/slider?t=clicks` }))['observation'];
+  const page = context.pages().find((p) => p.url() === `${fixture.main}/slider?t=clicks`)!;
+  const file = observation.targets.find((target: { name: string }) => target.name === 'report.pdf');
+  const right = await run('s-clicks', { action: 'click', observation: observation.id, target: { ref: file.ref }, button: 'right' });
+  expect(right, JSON.stringify(right).slice(0, 300)).toMatchObject({ completed: true });
+  await expect(page.locator('#opened')).toHaveText('menu by right click');
+  observation = right['observation'];
+  const again = observation.targets.find((target: { name: string }) => target.name === 'report.pdf');
+  const double = await run('s-clicks', { action: 'click', observation: observation.id, target: { ref: again.ref }, count: 2 });
+  expect(double, JSON.stringify(double).slice(0, 300)).toMatchObject({ completed: true });
+  await expect(page.locator('#opened')).toHaveText('opened by double-click');
+});

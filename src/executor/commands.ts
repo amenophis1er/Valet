@@ -1024,13 +1024,15 @@ export class BrowserCommands implements Executor {
     await this.#pointAt(command.session, ref.tabId, point);
     cancel.check();
     cancel.dispatch();
+    const count = command.args['count'] === 2 ? 2 : 1;
+    const button = command.args['button'] === 'right' ? 'right' : 'left';
     // A frame from another site has no place in the viewport the worker can read: the element clicks itself.
     if (!point) {
-      await this.#script(ref, clickRef, [ref.local]);
+      await this.#script(ref, clickRef, [ref.local, count, button]);
       return {};
     }
     await this.#driven(() => this.#withDebugger(ref.tabId, async (send) => {
-      const base = { x: point.x, y: point.y, button: 'left', clickCount: 1, buttons: 1 };
+      const base = { x: point.x, y: point.y, button, clickCount: 1, buttons: button === 'right' ? 2 : 1 };
       if (this.#pace === 'natural') {
         // Along a gentle curve from where the mouse was, then a moment's hover.
         for (const step of this.#path(ref.tabId, point)) {
@@ -1043,11 +1045,15 @@ export class BrowserCommands implements Executor {
       this.#mouse.set(ref.tabId, point);
       // A Stop between the hover and the press stops the click.
       cancel.check();
-      await send('Input.dispatchMouseEvent', { ...base, type: 'mousePressed' });
-      if (this.#pace === 'natural') await this.#wait(50 + Math.round(60 * this.#random()));
-      // Once pressed, always released: a Stop must never leave the button held.
-      await send('Input.dispatchMouseEvent', { ...base, type: 'mouseReleased' });
-    }), () => this.#script(ref, clickRef, [ref.local]));
+      // A double-click is two presses, the second counted as such, so the page sees dblclick.
+      for (let n = 1; n <= count; n += 1) {
+        await send('Input.dispatchMouseEvent', { ...base, clickCount: n, type: 'mousePressed' });
+        if (this.#pace === 'natural') await this.#wait(50 + Math.round(60 * this.#random()));
+        // Once pressed, always released: a Stop must never leave the button held.
+        await send('Input.dispatchMouseEvent', { ...base, clickCount: n, type: 'mouseReleased', buttons: 0 });
+        if (n < count) await this.#wait(60);
+      }
+    }), () => this.#script(ref, clickRef, [ref.local, count, button]));
     await this.#settle(ref.tabId, tab);
     return {};
   }
@@ -1625,12 +1631,26 @@ function scrollStep(top: number): void {
   window.scrollBy({ top, behavior: 'instant' as ScrollBehavior });
 }
 
-function clickRef(ref: string): void {
+function clickRef(ref: string, count = 1, button: 'left' | 'right' = 'left'): void {
   const api = (globalThis as unknown as Record<string, { locate(ref: string, options: unknown): { ok: boolean } } | undefined>)['__valetPage'];
   api?.locate(ref, {});
   const holder = (globalThis as unknown as Record<string, { refs: Map<string, WeakRef<Element>> } | undefined>)['__valetPageRegistry'];
   const element = holder?.refs.get(ref)?.deref() as HTMLElement | undefined;
-  element?.click();
+  if (!element) return;
+  // Without the debugger: the events a page listens for, in the order a mouse sends them.
+  const box = element.getBoundingClientRect();
+  const at = { bubbles: true, cancelable: true, composed: true, clientX: box.left + box.width / 2, clientY: box.top + box.height / 2, view: window };
+  if (button === 'right') {
+    element.dispatchEvent(new MouseEvent('mousedown', { ...at, button: 2, buttons: 2 }));
+    element.dispatchEvent(new MouseEvent('mouseup', { ...at, button: 2 }));
+    element.dispatchEvent(new MouseEvent('contextmenu', { ...at, button: 2 }));
+    return;
+  }
+  element.click();
+  if (count === 2) {
+    element.dispatchEvent(new MouseEvent('click', { ...at, detail: 2 }));
+    element.dispatchEvent(new MouseEvent('dblclick', { ...at, detail: 2 }));
+  }
 }
 
 function typeRef(ref: string, value: string): void {
