@@ -68,6 +68,7 @@ function connect(): void {
     if (message.type === 'state') { state = message.state; render(); renderMode(); renderLearn(); }
     if (message.type === 'captured') void captured(message);
     if (message.type === 'skill-draft') void drafted(message);
+    if (message.type === 'trace') savedTrace(message);
   });
   // The worker restarted: reconnecting starts it again and it resumes from storage. Whatever it was
   // asked for over this port will not come: those requests end here, so nothing waits for them.
@@ -966,6 +967,22 @@ async function copyConversation(): Promise<void> {
 }
 
 /** One HTML file with everything the panel shows, the screenshots read from storage. */
+/** The run trace, asked of the worker and saved as a file: for diagnosing a run that went wrong. */
+let tracing: string | undefined;
+
+function saveTrace(): void {
+  tracing = `trace-${Date.now()}`;
+  send({ type: 'export-trace', requestId: tracing });
+}
+
+function savedTrace(message: Extract<WorkerMessage, { type: 'trace' }>): void {
+  if (message.requestId !== tracing) return;
+  tracing = undefined;
+  const url = URL.createObjectURL(new Blob([message.json], { type: 'application/json' }));
+  download(url, `valet-trace-${new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '')}.json`);
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
 async function saveConversation(): Promise<void> {
   if (!state) return;
   const ids = state.transcript.flatMap((entry) =>
@@ -1366,6 +1383,7 @@ $('more').onclick = toggleMore;
 $('menu-save-skill').onclick = () => { closeMore(); saveSkillFromMenu(); };
 $('copy-conversation').onclick = () => { closeMore(); void copyConversation(); };
 $('save-conversation').onclick = () => { closeMore(); void saveConversation(); };
+$('save-trace').onclick = () => { closeMore(); saveTrace(); };
 $('goal').addEventListener('input', (event) => {
   // An @ at the start or after a space brings up the skills.
   const goal = event.target as HTMLTextAreaElement;

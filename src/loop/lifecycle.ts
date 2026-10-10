@@ -43,9 +43,12 @@ export class Lifecycle {
   #stopRequested = false;
   /** Called with every persisted status the run enters, to store it with the conversation. */
   readonly #persist: (status: RunStatus) => void;
+  /** Told of every transition (the run trace). */
+  readonly #changed?: (from: Phase, to: Phase) => void;
 
-  constructor(persist: (status: RunStatus) => void) {
+  constructor(persist: (status: RunStatus) => void, changed?: (from: Phase, to: Phase) => void) {
     this.#persist = persist;
+    this.#changed = changed;
   }
 
   get phase(): Phase { return this.#phase; }
@@ -57,7 +60,9 @@ export class Lifecycle {
   /** The only way the phase changes. */
   to(next: Phase): void {
     if (!ALLOWED[this.#phase].includes(next)) throw new IllegalTransition(this.#phase, next);
+    const from = this.#phase;
     this.#phase = next;
+    this.#changed?.(from, next);
     // A Stop belongs to the run it was pressed in: a new start or resume begins without one, and a Stop
     // pressed while starting is kept, so the run ends at its first guard.
     if (next === 'starting') this.#stopRequested = false;

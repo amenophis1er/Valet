@@ -5,6 +5,7 @@
 
 import type { AIToolCall } from '@amenophis1er/extension-ai-connect/types';
 import type { Persisted } from './state.js';
+import type { TraceInput } from './trace.js';
 
 export interface LoopHost {
   /** The conversation's state, as it is now (replaced on a new conversation: read it each time). */
@@ -18,4 +19,6 @@ export interface LoopHost {
   /** A tool call's one result, into the history. */
   answer(call: AIToolCall, result: unknown, isError: boolean): void;
   now(): number;
+  /** An event for the run trace (trace.ts). */
+  trace(event: TraceInput): void;
 }

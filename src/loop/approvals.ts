@@ -45,6 +45,7 @@ export class Approvals {
     if (this.#stopped()) return Promise.resolve('deny');
     const answered = this.#card.ask();
     this.#host.state().approval = { id: this.#id('a'), kind: 'origin', origin, reason };
+    this.#host.trace({ kind: 'card', card: 'site', origin, reason });
     this.#host.note(reason === 'blocked' ? `The page tried to go to ${origin}. Allow it?` : `Asking you about ${origin}.`);
     void this.#host.save();
     return answered;
@@ -60,6 +61,7 @@ export class Approvals {
       submit: { action: fingerprint.action, method: fingerprint.method, submitter: fingerprint.submitter?.name ?? '', fields: fingerprint.fields },
     };
     this.#host.state().approval = approval;
+    this.#host.trace({ kind: 'card', card: 'form', origin: fingerprint.action, reason: 'submit' });
     this.#host.note(`Asking you before submitting a form to ${fingerprint.action}.`);
     void this.#host.save();
     return answered;
@@ -70,6 +72,7 @@ export class Approvals {
     const state = this.#host.state();
     const approval = state.approval;
     if (!approval || approval.id !== id) return;
+    this.#host.trace({ kind: 'answer', card: approval.kind === 'submit' ? 'form' : 'site', decision });
     if (approval.kind === 'submit') {
       // Auto never covers forms: an "auto" answer here counts as once.
       const answer: Decision = decision === 'auto' ? 'once' : decision;

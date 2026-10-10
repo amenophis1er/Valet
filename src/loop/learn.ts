@@ -60,6 +60,7 @@ export class Learn {
     // The waiter exists before the owner can see Next: a click during the preview is never lost.
     const proceed = this.#stopped() ? undefined : this.#next.ask();
     state.stepWait = { text, ...(why ? { why } : {}) };
+    this.#host.trace({ kind: 'step-wait', text });
     await this.#host.save();
     await this.#deps.preview(args).catch(() => undefined);
     await this.#deps.note({ text, ...(why ? { why } : {}), waiting: true }).catch(() => undefined);

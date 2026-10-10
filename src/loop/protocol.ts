@@ -65,7 +65,9 @@ export type PanelIntent =
   /** Learning: let the step the agent is waiting with go ahead. */
   | { type: 'step' }
   /** Learning on or off, from the composer; kept for the next conversation too. */
-  | { type: 'set-learning'; on: boolean };
+  | { type: 'set-learning'; on: boolean }
+  /** The run trace as a file, for diagnosing a run: the worker answers with `trace`. */
+  | { type: 'export-trace'; requestId: string };
 
 export type RunStatus = 'idle' | 'running' | 'paused';
 
@@ -115,4 +117,5 @@ export interface OwnerAttachment { kind: Attachment['kind']; name: string; bytes
 export type WorkerMessage =
   | { type: 'state'; state: PanelState }
   | { type: 'captured'; requestId: string; image?: { data: string; width: number; height: number; title: string }; error?: string }
-  | { type: 'skill-draft'; requestId: string; draft?: { name: string; sites: string[]; text: string }; error?: string };
+  | { type: 'skill-draft'; requestId: string; draft?: { name: string; sites: string[]; text: string }; error?: string }
+  | { type: 'trace'; requestId: string; json: string };

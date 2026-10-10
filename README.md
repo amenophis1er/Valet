@@ -58,6 +58,10 @@ companion app.
   **Save as skill** drafts one from what worked — you edit it before it is
   kept (Settings → Skills).
 
+- **See why a run went wrong** — the ⋯ menu saves a **run trace**: every
+  model turn, every action with its arguments and result, every approval and
+  state change, with times — one JSON file to inspect or share.
+
 ## Safety model
 
 The model reads untrusted web pages, so the extension — not the model —

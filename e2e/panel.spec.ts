@@ -956,3 +956,35 @@ test('a frame another extension plants at the first keystroke does not stop the 
     await panel.close();
   }
 });
+
+test('saves a run trace: every model turn, the call with its arguments and result, and what the file holds', async () => {
+  model.script([
+    () => ({ text: 'Reading the shop first.', call: { action: 'observe' } }),
+    () => ({ text: 'The shop is open.' }),
+  ]);
+  const shop = await context.newPage();
+  await shop.goto(`${fixture.main}/shop?t=trace`);
+  const panel = await openPanel();
+  await panel.getByRole('button', { name: 'New conversation' }).click();
+  await shop.bringToFront();
+  await panel.locator('#goal').fill('Look at the shop');
+  await panel.getByRole('button', { name: 'Send' }).click();
+  await expect(panel.locator('.agent').last()).toHaveText('The shop is open.', { timeout: 30_000 });
+  await panel.getByRole('button', { name: 'More' }).click();
+  const [download] = await Promise.all([panel.waitForEvent('download'), panel.getByRole('menuitem', { name: /Save run trace/ }).click()]);
+  expect(download.suggestedFilename()).toMatch(/^valet-trace-.*\.json$/);
+  const trace = JSON.parse(await (await import('node:fs/promises')).readFile(await download.path(), 'utf8')) as {
+    valetTrace: number; note: string; events: Array<Record<string, unknown>>; transcript: unknown[]; history: unknown[];
+  };
+  expect(trace.valetTrace).toBe(1);
+  expect(trace.note).toMatch(/Share it with care/);
+  const kinds = trace.events.map((event) => event['kind']);
+  expect(kinds).toEqual(expect.arrayContaining(['run', 'phase', 'model-request', 'model-response', 'call']));
+  expect(trace.events.find((event) => event['kind'] === 'run')).toMatchObject({ goal: 'Look at the shop', where: `${fixture.main}/shop?t=trace` });
+  const call = trace.events.find((event) => event['kind'] === 'call') as { args: unknown; outcome: string; result: { observation?: { url: string } } };
+  expect(call).toMatchObject({ args: { action: 'observe' }, outcome: 'ok' });
+  expect(call.result.observation?.url).toBe(`${fixture.main}/shop?t=trace`);
+  expect(trace.history.length).toBeGreaterThan(2);
+  await shop.close();
+  await panel.close();
+});

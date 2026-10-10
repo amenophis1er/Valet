@@ -193,6 +193,8 @@ const opening = new Map<string, Promise<Conversation>>();
 /** The conversations that exist, so a restarted worker restores each (chrome.storage.session). */
 const INDEX_KEY = 'agent:conversations';
 const stateKey = (id: string) => `agent:conversation:${id}`;
+/** The conversation's run trace (loop/trace.ts), apart from its state so it never crowds it. */
+const traceKey = (id: string) => `agent:trace:${id}`;
 
 async function readIndex(): Promise<string[]> {
   const stored = (await chrome.storage.session.get(INDEX_KEY))[INDEX_KEY];
@@ -243,6 +245,11 @@ function make(id: string): Conversation {
       get: async () => (await chrome.storage.session.get(stateKey(id)))[stateKey(id)] as Persisted | undefined,
       set: async (value) => { await chrome.storage.session.set({ [stateKey(id)]: value }); },
       remove: async () => { await chrome.storage.session.remove([stateKey(id)]); },
+    },
+    trace: {
+      get: async () => (await chrome.storage.session.get(traceKey(id)))[traceKey(id)],
+      set: async (events) => { await chrome.storage.session.set({ [traceKey(id)]: events }); },
+      remove: async () => { await chrome.storage.session.remove([traceKey(id)]); },
     },
     mode: {
       get: async () => ((await chrome.storage.local.get(MODE_KEY))[MODE_KEY] === 'auto' ? 'auto' : 'ask'),
@@ -354,6 +361,7 @@ async function handle(conversation: Conversation, port: Port, intent: PanelInten
     case 'set-mode': void loop.setMode(intent.mode); return;
     case 'step': loop.step(); return;
     case 'set-learning': void loop.setLearning(intent.on); return;
+    case 'export-trace': port.postMessage({ type: 'trace', requestId: intent.requestId, json: loop.exportTrace() } satisfies WorkerMessage); return;
     case 'capture-tab': {
       const reply = (message: Omit<Extract<WorkerMessage, { type: 'captured' }>, 'type' | 'requestId'>) =>
         port.postMessage({ type: 'captured', requestId: intent.requestId, ...message } satisfies WorkerMessage);

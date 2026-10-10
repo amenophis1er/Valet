@@ -95,6 +95,19 @@ from the command's `Cancellation`, never guessed from the error:
 | `completed: "unknown"` | Dispatch had begun when it failed: it may have happened. The run pauses. | Inspect before acting; never repeat a submission. |
 | `skipped` | Not run (stopped, paused, or an earlier call in the batch failed). | Nothing happened. |
 
+## Diagnosing a run
+
+Every conversation keeps a **run trace** (`loop/trace.ts`): each model turn
+(what was sent, what came back, how long it took), each tool call with its
+arguments and the result the model got, every approval card and its answer,
+every lifecycle transition and notice, with times. It is recorded at the
+loop's choke points — the lifecycle, the model request, the one result per
+call — so nothing has to remember to log. It stays in `chrome.storage.session`
+beside the conversation, within a size budget, and is gone with it. The owner
+saves it from the panel's ⋯ menu (**Save run trace**) as one JSON file that
+also holds the conversation as the model had it, images left out. It contains
+what the agent read and typed on pages; the file says so.
+
 ## Safety guarantees
 
 - **The extension enforces, not the model.** Scope, form approval and fresh

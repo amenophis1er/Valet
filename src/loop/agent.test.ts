@@ -1037,3 +1037,44 @@ describe('the run lifecycle in the loop', () => {
     expect(JSON.stringify(h.requests[0]!.messages)).toContain('Second');
   });
 });
+
+describe('the run trace in the loop', () => {
+  function answerNextCard(h: ReturnType<typeof harness>, decision: 'once' | 'deny') {
+    const timer = setInterval(() => {
+      const approval = h.loop.state.approval;
+      if (approval) { clearInterval(timer); void h.loop.decide(approval.id, decision); }
+    }, 1);
+  }
+
+  it('records the run in order: start, state changes, each model turn, the card and its answer, each call with its result', async () => {
+    const h = harness([
+      // The fake page is on shop.test: the site the card allows is where the tab lands.
+      callTurn({ id: 'a', args: { action: 'navigate', url: 'https://shop.test/' } }),
+      () => ({ ok: true, text: 'Done.', stopReason: 'end' }),
+    ], { scoped: true });
+    answerNextCard(h, 'once');
+    await h.loop.run('Go elsewhere');
+    const trace = JSON.parse(h.loop.exportTrace()) as { valetTrace: number; events: Array<Record<string, unknown>> };
+    expect(trace.valetTrace).toBe(1);
+    const kinds = trace.events.map((event) => (event['kind'] === 'phase' ? `phase:${event['to']}` : event['kind']));
+    expect(kinds).toEqual(expect.arrayContaining(['phase:starting', 'run', 'phase:running', 'model-request', 'model-response', 'card', 'answer', 'call', 'phase:idle']));
+    const order = (kind: string) => kinds.indexOf(kind);
+    expect(order('run')).toBeLessThan(order('model-request'));
+    expect(order('card')).toBeLessThan(order('answer'));
+    expect(order('answer')).toBeLessThan(order('call'));
+    const call = trace.events.find((event) => event['kind'] === 'call')!;
+    expect(call).toMatchObject({ name: 'browser', args: { action: 'navigate', url: 'https://shop.test/' }, outcome: 'ok', turn: 1 });
+    expect(trace.events.find((event) => event['kind'] === 'answer')).toMatchObject({ card: 'site', decision: 'once' });
+    expect(trace.events.find((event) => event['kind'] === 'model-response' && event['turn'] === 2)).toMatchObject({ ok: true, text: 'Done.' });
+  });
+
+  it('leaves images out of the export, and forgets the trace with the conversation', async () => {
+    const h = harness([callTurn({ id: 's', args: { action: 'screenshot' } }), () => ({ ok: true, text: 'Seen.', stopReason: 'end' })], { scoped: false });
+    await h.loop.run('Look', 42);
+    const exported = h.loop.exportTrace();
+    expect(exported).not.toContain('SU1H');
+    expect(exported).toContain('"omitted": true');
+    await h.loop.newConversation();
+    expect((JSON.parse(h.loop.exportTrace()) as { events: unknown[] }).events).toEqual([]);
+  });
+});

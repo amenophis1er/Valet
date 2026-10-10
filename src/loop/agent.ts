@@ -33,6 +33,7 @@ import { Lifecycle } from './lifecycle.js';
 import { MediaKeeper, hasImage, withoutImages, type KeptImage } from './media.js';
 import { SkillNotes, type SkillDraft } from './skill-notes.js';
 import { empty, type Connection, type Persisted } from './state.js';
+import { TRACE_VERSION, Trace, type TraceStore } from './trace.js';
 
 export type { Connection, Persisted } from './state.js';
 
@@ -85,6 +86,8 @@ export interface LoopDeps {
   preview(args: Record<string, unknown>): Promise<void>;
   note(note: Note | null): Promise<void>;
   emit(state: PanelState): void;
+  /** Where the run trace is kept, beside the conversation (trace.ts); without it, the trace lives in memory only. */
+  trace?: TraceStore;
   now?: () => number;
   /** Tests: shorter waits before sending a failed model request again. */
   retryDelaysMs?: number[];
@@ -127,7 +130,12 @@ export class AgentLoop {
   #cancel?: Cancellation;
   #running?: Promise<void>;
   /** The run's state machine (lifecycle.ts): every change of status goes through it. */
-  #life = new Lifecycle((status) => { this.#state.status = status; });
+  #life = new Lifecycle((status) => { this.#state.status = status; }, (from, to) => this.#trace.record({ kind: 'phase', from, to }));
+  /** What happened, for diagnosing a run (trace.ts). */
+  readonly #trace: Trace;
+  /** The model turn this run is on, for the trace; and when the tool call in flight started. */
+  #turn = 0;
+  #callStarted?: number;
   /** The loop's parts, each owning one concern of the conversation. */
   readonly #approvals: Approvals;
   readonly #media: MediaKeeper;
@@ -137,6 +145,7 @@ export class AgentLoop {
   constructor(deps: LoopDeps) {
     this.#deps = deps;
     this.#now = deps.now ?? (() => Date.now());
+    this.#trace = new Trace(this.#now, deps.trace);
     const host: LoopHost = {
       state: () => this.#state,
       note: (text) => this.#note(text),
@@ -144,6 +153,7 @@ export class AgentLoop {
       contain: () => this.#contain(),
       answer: (call, result, isError) => this.#answer(call, result, isError),
       now: () => this.#now(),
+      trace: (event) => this.#trace.record(event),
     };
     const stopped = () => this.#life.stopRequested;
     this.#approvals = new Approvals(host, deps.mode, stopped);
@@ -201,6 +211,7 @@ export class AgentLoop {
 
   /** Load persisted state. A run that was going when the worker died is paused. */
   async restore(): Promise<void> {
+    await this.#trace.restore();
     const saved = await this.#deps.storage.get();
     if (!saved) {
       this.#state = { ...empty(), scope: newScope(await this.#deps.mode.get()) };
@@ -319,6 +330,8 @@ export class AgentLoop {
     // The page it starts on is allowed for this request: the one handed over, or the one it continues in.
     const startOrigin = originOf((continuing ? here?.url : handed?.url) ?? '');
     if (startOrigin && verdict(startOrigin, s.scope) !== 'allowed') s.scope = decide(s.scope, startOrigin, 'once');
+    this.#turn = 0;
+    this.#trace.record({ kind: 'run', goal: text, where: (continuing ? here?.url : handed?.url) ?? (useNewTab ? 'a new tab' : 'its own tab'), mode: s.scope.mode, learn: this.#learn.on, model: `${connection.label} · ${connection.model}` });
     if (firstRequest && s.scope.mode === 'auto') this.#note('Auto is on, as in your last conversation: sites are approved without asking, and so are searches and filters. A form that sends data still asks. Change it with the Auto button under the message box.');
     this.#life.to('running');
     s.pauseReason = undefined;
@@ -383,6 +396,7 @@ export class AgentLoop {
     await this.stop();
     await this.#deps.closeTabs().catch(() => undefined);
     await this.#media.forget();
+    await this.#trace.clear();
     this.#state = { ...empty(), scope: newScope(await this.#deps.mode.get()) };
     this.#life.load('idle');
     this.#amendments = [];
@@ -393,6 +407,7 @@ export class AgentLoop {
   async discard(): Promise<void> {
     await this.stop();
     await this.#media.forget();
+    await this.#trace.clear();
     this.#state = { ...empty(), scope: newScope(await this.#deps.mode.get()) };
     this.#life.load('idle');
     this.#amendments = [];
@@ -421,16 +436,29 @@ export class AgentLoop {
 
         this.#abort = new AbortController();
         const connection = s.connection!;
-        const ask = () => deps.chat({
-          system: SYSTEM_PROMPT, messages: this.#view(), tools: [BROWSER_TOOL, SAVE_FILE_TOOL],
-          connectionId: connection.id, connectionRevision: connection.revision, model: connection.model, maxTokens: 8000,
-        }, { signal: this.#abort!.signal });
+        const ask = async () => {
+          const messages = this.#view();
+          this.#turn += 1;
+          const turn = this.#turn;
+          this.#trace.record({ kind: 'model-request', turn, messages: messages.length, chars: JSON.stringify(messages).length });
+          const sent = this.#now();
+          const answer = await deps.chat({
+            system: SYSTEM_PROMPT, messages, tools: [BROWSER_TOOL, SAVE_FILE_TOOL],
+            connectionId: connection.id, connectionRevision: connection.revision, model: connection.model, maxTokens: 8000,
+          }, { signal: this.#abort!.signal });
+          this.#trace.record({ kind: 'model-response', turn, ms: this.#now() - sent, ok: answer.ok,
+            ...(answer.stopReason ? { stopReason: answer.stopReason } : {}), ...(answer.text ? { text: answer.text } : {}),
+            ...(answer.toolCalls ? { calls: Trace.calls(answer.toolCalls) } : {}),
+            ...(answer.error ? { error: answer.error, retryable: answer.retryable === true } : {}) });
+          return answer;
+        };
         let result = await ask();
         // A dropped connection or a provider hiccup: the request acted on nothing, so it is sent again, twice at most.
         for (const delay of deps.retryDelaysMs ?? RETRY_DELAYS_MS) {
           if (result.ok || !result.retryable || this.#life.stopRequested) break;
           this.#note(`${result.error ?? 'The model request failed.'} Trying again…`);
           await this.#save();
+          this.#trace.record({ kind: 'retry', turn: this.#turn, delayMs: delay, ...(result.error ? { error: result.error } : {}) });
           await new Promise((resolve) => setTimeout(resolve, delay));
           if (this.#life.stopRequested) break;
           result = await ask();
@@ -512,6 +540,7 @@ export class AgentLoop {
       const targets = [...this.#deps.controller.latestTargets];
       await this.#learn.before(call.args ?? {}, targets, why);
       if (this.#life.stopRequested) this.#cancel.cancel();
+      this.#callStarted = this.#now();
       const ran = await this.#deps.controller.run(call.args, this.#cancel);
       const notes = 'observation' in ran && ran.observation ? this.#notes.notesFor(ran.observation.url) : undefined;
       const result: ToolResult = notes ? { ...ran, ownerNotes: notes } as unknown as ToolResult : ran;
@@ -532,6 +561,7 @@ export class AgentLoop {
         }
       }
       if (image) {
+        this.#traceCall(call, { completed: true, screenshot: { width: image.width, height: image.height } }, false);
         s.transcript.push({ kind: 'action', text: describeStep(call.args, targets, outcome === 'ok'), outcome, image });
         await this.#media.prune();
       } else {
@@ -576,6 +606,7 @@ export class AgentLoop {
   }
 
   #answer(call: AIToolCall, result: unknown, isError: boolean): void {
+    this.#traceCall(call, result, isError);
     this.#state.history.push({ role: 'tool', toolCallId: call.id, name: call.name, content: JSON.stringify(result), ...(isError ? { isError: true } : {}) });
   }
 
@@ -592,6 +623,36 @@ export class AgentLoop {
 
   #note(text: string): void {
     this.#state.transcript.push({ kind: 'notice', text });
+    this.#trace.record({ kind: 'note', text });
+  }
+
+  /** A tool call's one result, for the trace: what was asked, how long it took, and what the model got back. */
+  #traceCall(call: AIToolCall, result: unknown, isError: boolean): void {
+    const ms = this.#callStarted === undefined ? 0 : this.#now() - this.#callStarted;
+    this.#callStarted = undefined;
+    const outcome = result && typeof result === 'object' ? outcomeOf(result as ToolResult) : isError ? 'error' : 'ok';
+    this.#trace.record({ kind: 'call', turn: this.#turn, id: call.id, name: call.name, args: call.argsError ? { invalidJson: call.argsError.raw } : call.args, ms, outcome, result });
+  }
+
+  /**
+   * The trace as a file the owner can save and share: the events, and the
+   * conversation as the model had it (images left out). It holds what the
+   * agent read on pages and typed into them.
+   */
+  exportTrace(): string {
+    const s = this.#state;
+    const history = s.history.map((message) => (Array.isArray(message.content)
+      ? { ...message, content: message.content.map((part) => (part.type === 'image' || part.type === 'document' ? { type: part.type, omitted: true } : part)) }
+      : message));
+    return JSON.stringify({
+      valetTrace: TRACE_VERSION,
+      exportedAt: new Date(this.#now()).toISOString(),
+      note: 'What the agent read on pages and typed into them is in here. Share it with care.',
+      conversation: { status: s.status, connection: s.connection ? `${s.connection.label} · ${s.connection.model}` : null, mode: s.scope.mode, actions: s.actions },
+      events: this.#trace.events,
+      transcript: s.transcript,
+      history,
+    }, null, 2);
   }
 
   async #pause(reason: string): Promise<void> {
@@ -634,6 +695,7 @@ export class AgentLoop {
     this.#state.workspace = await this.#deps.workspace().catch(() => null);
     if (this.#amendments.length > 0) this.#state.amendments = this.#amendments; else delete this.#state.amendments;
     await this.#deps.storage.set(this.#state);
+    this.#trace.persist();
     this.#deps.emit(this.state);
   }
 }
