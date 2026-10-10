@@ -35,6 +35,12 @@ const INTERACTIVE = 'a[href],button,input,select,textarea,[role="button"],[role=
 export const MAX_TARGETS = 240;
 const MAX_TREE = 20_000;
 
+/** A tree cut to fit says so, with what to do: an observation is for acting, `read` is for the page's text. */
+export function cut(tree: string, max: number): string {
+  if (tree.length <= max) return tree;
+  return `${tree.slice(0, max)}\n… [observation cut: ${tree.length - max} more characters of this page are not shown. To read its content, use read.]`;
+}
+
 const TAG_ROLES: Record<string, string> = {
   a: 'link', button: 'button', select: 'combobox', textarea: 'textbox',
   h1: 'heading', h2: 'heading', h3: 'heading', h4: 'heading', h5: 'heading', h6: 'heading',
@@ -199,7 +205,7 @@ export function collect(doc: Document): Collected & { nodes: Element[] } {
 
   return {
     url: doc.location?.href ?? '', title: doc.title ?? '',
-    tree: lines.join('\n').slice(0, MAX_TREE), elements, nodes,
+    tree: cut(lines.join('\n'), MAX_TREE), elements, nodes,
     scroll: { x: Math.round(view.scrollX || 0), y: Math.round(view.scrollY || 0) },
   };
 }

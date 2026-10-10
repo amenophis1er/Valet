@@ -344,3 +344,23 @@ test('a page that rewrites its own URL keeps its refs; a reload does not', async
   const refused = await run('s-spa', { action: 'click', observation: observation.id, target: { ref: again.ref } });
   expect(refused, JSON.stringify(refused).slice(0, 300)).toMatchObject({ refused: expect.stringMatching(/changed since that observation|Stale/) });
 });
+
+test('reads a long article in parts, without its menu; the observation says it was cut', async () => {
+  const navigated = await run('s-read', { action: 'navigate', url: `${fixture.main}/article` });
+  const tree: string = navigated['observation'].tree;
+  expect(tree).toMatch(/observation cut: \d+ more characters of this page are not shown\. To read its content, use read\./);
+  const first = await run('s-read', { action: 'read' });
+  expect(first, JSON.stringify(first).slice(0, 300)).toMatchObject({ completed: true, read: { part: 1, title: 'A long article' } });
+  expect(first['read'].text.startsWith('# A long article\n\n## Section 1')).toBe(true);
+  expect(first['read'].text).not.toContain('Topic number');
+  const parts: number = first['read'].parts;
+  expect(parts).toBeGreaterThan(1);
+  expect(first['read'].next).toMatch(/Read part 2/);
+  const last = await run('s-read', { action: 'read', part: parts });
+  expect(last['read'].text).toContain('The last sentence of the article.');
+  expect(last['read'].next).toBeUndefined();
+  // Reading dispatched nothing: the observation from the navigate still acts.
+  const link = navigated['observation'].targets.find((target: { name: string }) => target.name === 'Topic number 0');
+  const hovered = await run('s-read', { action: 'hover', observation: navigated['observation'].id, target: { ref: link.ref } });
+  expect(hovered, JSON.stringify(hovered).slice(0, 300)).toMatchObject({ completed: true });
+});

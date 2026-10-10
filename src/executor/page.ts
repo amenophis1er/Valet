@@ -187,3 +187,124 @@ export function hoverRef(ref: string): void {
     element.dispatchEvent(new MouseEvent(type, { bubbles: !type.endsWith('enter'), cancelable: true }));
   }
 }
+
+/**
+ * The page's readable text, for `read`: the main content (the largest of
+ * main, [role=main] and article, else the body) as light Markdown — headings,
+ * paragraphs, lists, tables, quotes and code — without navigation, banners,
+ * footers, sidebars, forms, hidden elements or footnote markers. Injected on
+ * its own: everything it uses is inside it.
+ */
+export function readPageText(): { url: string; title: string; text: string } {
+  const MAX = 400_000;
+  const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'SVG', 'CANVAS', 'IFRAME', 'OBJECT', 'NAV', 'ASIDE', 'FOOTER', 'FORM', 'BUTTON', 'SELECT', 'INPUT', 'TEXTAREA', 'DIALOG', 'MENU']);
+  const SKIP_ROLES = new Set(['navigation', 'banner', 'contentinfo', 'complementary', 'search', 'menu', 'menubar', 'toolbar', 'dialog', 'alertdialog', 'tablist', 'button']);
+  const BLOCKS = new Set(['P', 'DIV', 'SECTION', 'ARTICLE', 'MAIN', 'HEADER', 'FIGURE', 'FIGCAPTION', 'DL', 'DT', 'DD', 'DETAILS', 'SUMMARY', 'ADDRESS', 'CAPTION', 'CENTER', 'HR']);
+
+  const candidates = [...document.querySelectorAll<HTMLElement>('main, [role="main"], article')];
+  let root: HTMLElement = document.body ?? document.documentElement;
+  let best = 0;
+  for (const candidate of candidates) {
+    const size = candidate.textContent?.length ?? 0;
+    if (size > best) { best = size; root = candidate; }
+  }
+  if (best < 500) root = document.body ?? document.documentElement;
+  const atBody = root === document.body;
+
+  const skipped = (el: Element): boolean => {
+    if (SKIP_TAGS.has(el.tagName)) return true;
+    if (el.tagName === 'HEADER' && atBody && el.parentElement === document.body) return true;
+    const role = el.getAttribute('role');
+    if (role && SKIP_ROLES.has(role)) return true;
+    if (el.getAttribute('aria-hidden') === 'true' || (el as HTMLElement).hidden) return true;
+    // Footnote markers ([1], [a]) and edit links ([edit]) are noise in a summary.
+    if (el.tagName === 'SUP' && /^\s*\[[^\]]{1,6}\]\s*$/.test(el.textContent ?? '')) return true;
+    if (/^\s*\[\s*edit\s*\]\s*$/i.test(el.textContent ?? '') && el.childElementCount <= 3 && (el.textContent ?? '').length < 20) return true;
+    const style = el instanceof HTMLElement ? getComputedStyle(el) : null;
+    return style !== null && (style.display === 'none' || style.visibility === 'hidden');
+  };
+
+  const out: string[] = [];
+  let size = 0;
+  const block = (text: string): void => {
+    const clean = text.replace(/[ \t ]+/g, ' ').replace(/ *\n */g, '\n').trim();
+    if (!clean || size > MAX) return;
+    out.push(clean);
+    size += clean.length + 2;
+  };
+
+  /** The text of an element as one line: inline content, skipped parts left out. */
+  const inline = (node: Node): string => {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
+    if (!(node instanceof Element) || skipped(node)) return '';
+    if (node.tagName === 'BR') return '\n';
+    if (node.tagName === 'IMG') {
+      // Icons and badges are not content: only an image drawn at a real size is named, by its alt text.
+      const image = node as HTMLImageElement;
+      const alt = image.getAttribute('alt')?.trim();
+      const small = (image.width > 0 && image.width < 64) || (image.height > 0 && image.height < 64);
+      return alt && !small ? ` [image: ${alt}] ` : '';
+    }
+    let text = '';
+    for (const child of node.childNodes) {
+      if (child instanceof Element && (child.tagName === 'UL' || child.tagName === 'OL')) continue;
+      text += inline(child);
+    }
+    return /^(DIV|P|LI|TD|TH|DT|DD|SECTION)$/.test(node.tagName) ? ` ${text} ` : text;
+  };
+
+  const table = (el: HTMLTableElement): void => {
+    const rows = [...el.rows].slice(0, 200).map((row) => [...row.cells].map((cell) => inline(cell).replace(/\s+/g, ' ').trim().replace(/\|/g, '\\|').slice(0, 300)));
+    const wide = Math.max(0, ...rows.map((row) => row.length));
+    if (wide === 0) return;
+    const lines = rows.filter((row) => row.some(Boolean)).map((row) => `| ${[...row, ...Array(wide - row.length).fill('')].join(' | ')} |`);
+    if (lines.length === 0) return;
+    const caption = el.caption ? inline(el.caption).trim() : '';
+    block(`${caption ? `${caption}\n` : ''}${lines[0]}\n|${' --- |'.repeat(wide)}\n${lines.slice(1).join('\n')}`);
+  };
+
+  /** A list's lines, nested lists indented under their item. */
+  const listLines = (el: Element, depth: number): string[] => {
+    let index = 0;
+    const lines: string[] = [];
+    for (const item of el.children) {
+      if (item.tagName !== 'LI' || skipped(item)) continue;
+      index += 1;
+      const marker = el.tagName === 'OL' ? `${index}.` : '-';
+      const text = inline(item).replace(/\s+/g, ' ').trim();
+      if (text) lines.push(`${'  '.repeat(depth)}${marker} ${text}`);
+      for (const nested of item.children) {
+        if (nested.tagName === 'UL' || nested.tagName === 'OL') lines.push(...listLines(nested, depth + 1));
+      }
+    }
+    return lines;
+  };
+
+  const walk = (el: Element): void => {
+    if (size > MAX || skipped(el)) return;
+    const tag = el.tagName;
+    if (/^H[1-6]$/.test(tag)) { block(`${'#'.repeat(Number(tag[1]))} ${inline(el).replace(/\s+/g, ' ')}`); return; }
+    if (tag === 'UL' || tag === 'OL') {
+      const lines = listLines(el, 0);
+      // Pushed as they are: the indentation of nested items is the point.
+      if (lines.length > 0 && size <= MAX) { out.push(lines.join('\n')); size += lines.join('\n').length + 2; }
+      return;
+    }
+    if (tag === 'TABLE') { table(el as HTMLTableElement); return; }
+    if (tag === 'PRE') { block(`\`\`\`\n${(el.textContent ?? '').slice(0, 20_000)}\n\`\`\``); return; }
+    if (tag === 'BLOCKQUOTE') { block(inline(el).trim().split('\n').map((line) => `> ${line.trim()}`).join('\n')); return; }
+    // A block made only of inline content is one paragraph; otherwise its children are walked.
+    const hasBlocks = [...el.children].some((child) => BLOCKS.has(child.tagName) || /^(H[1-6]|UL|OL|TABLE|PRE|BLOCKQUOTE)$/.test(child.tagName));
+    if (!hasBlocks) { block(inline(el)); return; }
+    let run = '';
+    for (const child of el.childNodes) {
+      const isBlock = child instanceof Element && (BLOCKS.has(child.tagName) || /^(H[1-6]|UL|OL|TABLE|PRE|BLOCKQUOTE)$/.test(child.tagName));
+      if (isBlock) { block(run); run = ''; walk(child as Element); }
+      else run += inline(child);
+    }
+    block(run);
+  };
+
+  walk(root);
+  return { url: location.href, title: document.title, text: out.join('\n\n').slice(0, MAX) };
+}

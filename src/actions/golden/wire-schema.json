@@ -10,6 +10,7 @@
       "enum": [
         "navigate",
         "observe",
+        "read",
         "screenshot",
         "click",
         "hover",
@@ -229,6 +230,12 @@
         "down"
       ],
       "description": "Required for scroll."
+    },
+    "part": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 500,
+      "description": "read only: which part of a long page's text, from 1. Default 1; a result says how many parts there are."
     },
     "tabId": {
       "type": "string",

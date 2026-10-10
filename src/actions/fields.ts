@@ -107,6 +107,11 @@ export const FIELDS = {
     zod: z.enum(['up', 'down']).optional(),
     wire: { type: 'string', enum: ['up', 'down'], description: 'Required for scroll.' },
   },
+  part: {
+    exclusive: true,
+    zod: z.number().int().min(1).max(500).optional(),
+    wire: { type: 'integer', minimum: 1, maximum: 500, description: 'read only: which part of a long page\'s text, from 1. Default 1; a result says how many parts there are.' },
+  },
   tabId: {
     zod: z.string().max(40).optional(),
     wire: { type: 'string', maxLength: 40, description: 'Required for tab: an id from observation.tabs.' },

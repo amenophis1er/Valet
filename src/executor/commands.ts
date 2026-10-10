@@ -26,7 +26,8 @@ import type { SubmitFingerprint } from './content.js';
 import { DEBUGGER_KEPT_OUT, DebuggerKeptOut, type Driver, type Pace, type Ref } from './driver.js';
 import { INPUT, type InputName } from './input/index.js';
 import { paintOverlay } from './overlay.js';
-import { frameOffsetRef, listFrames, locateRef, pointAtRef, readObservation, readOrigin, readReadyState, readViewport, submitFactsRef, tokenRef, type FrameObservation } from './page.js';
+import { cut } from './tree.js';
+import { frameOffsetRef, listFrames, locateRef, pointAtRef, readObservation, readOrigin, readPageText, readReadyState, readViewport, submitFactsRef, tokenRef, type FrameObservation } from './page.js';
 
 export type { Pace } from './driver.js';
 
@@ -103,6 +104,31 @@ function checkUrl(url: string): string {
 }
 
 /** A URL as the "same page" check compares it: through one parser, without the fragment, which a page changes without leaving its document (maps, hash routers). */
+/** How much of a page's text one `read` returns: a few thousand words. */
+export const READ_PART_CHARS = 12_000;
+
+/**
+ * A page's text in parts of about `size` characters, cut between paragraphs
+ * (a paragraph longer than a part is cut where it must).
+ */
+export function textParts(text: string, size = READ_PART_CHARS): string[] {
+  const parts: string[] = [];
+  let current = '';
+  for (const paragraph of text.split(/\n{2,}/)) {
+    let rest = paragraph;
+    while (rest.length > size) {
+      if (current) { parts.push(current); current = ''; }
+      const cut = Math.max(rest.lastIndexOf(' ', size), size / 2);
+      parts.push(rest.slice(0, cut).trim());
+      rest = rest.slice(cut).trim();
+    }
+    if (current && current.length + rest.length + 2 > size) { parts.push(current); current = ''; }
+    current = current ? `${current}\n\n${rest}` : rest;
+  }
+  if (current.trim()) parts.push(current);
+  return parts.length > 0 ? parts : [''];
+}
+
 /** scheme://host:port of a URL, or the URL itself when it does not parse. */
 function originOf(url: string): string {
   try { return new URL(url).origin; } catch { return url; }
@@ -430,6 +456,28 @@ export class BrowserCommands implements Executor {
     table.set(result.ref, { tabKey: key, tabId: tab.id!, frameId, local: result.ref, frame: index, role: result.role ?? '', name: result.name ?? '', docUrl: observed.url, generation: session.generation,
       ...(documentId ? { documentId } : frameId === 0 && observed.documentId ? { documentId: observed.documentId } : {}) });
     return { ref: result.ref, role: result.role ?? '', name: result.name ?? '', ...(result.href ? { href: result.href } : {}) };
+  }
+
+  /**
+   * One part of the active tab's text (`read`): the page's main content as
+   * light Markdown (page.ts), split into parts. Only a page on an origin the
+   * run allows is read, as for a screenshot. Nothing is dispatched, and the
+   * latest observation stays valid.
+   */
+  async readText(sessionId: string, part: number, cancel: Cancellation = new Cancellation(), allowOrigin: (origin: string) => boolean = () => true): Promise<{ url: string; title: string; part: number; parts: number; text: string }> {
+    const session = await this.#session(sessionId);
+    const tab = await this.#ownTab(session, this.#activeKey(session));
+    const top = originOf(this.#liveUrl(tab));
+    if (!allowOrigin(top)) throw new PreconditionError(`The tab is on ${top}, which is not allowed for this run, so it was not read.`);
+    cancel.check();
+    const [answer] = await this.#chrome.scripting.executeScript<[], ReturnType<typeof readPageText>>({ target: { tabId: tab.id!, frameIds: [0] }, func: readPageText })
+      .catch((error: unknown) => { throw new PreconditionError(`The page could not be read (${error instanceof Error ? error.message : String(error)}).`); });
+    cancel.check();
+    const page = answer?.result;
+    if (!page) throw new PreconditionError('The page did not answer. Wait a moment and read again.');
+    const parts = textParts(page.text);
+    if (part > parts.length) throw new PreconditionError(`This page's text has ${parts.length} part${parts.length === 1 ? '' : 's'}; there is no part ${part}.`);
+    return { url: page.url, title: page.title, part, parts: parts.length, text: parts[part - 1]! };
   }
 
   /** Step the active tab back one page (after a blocked navigation left it on Chrome's error page). */
@@ -888,13 +936,14 @@ export class BrowserCommands implements Executor {
           ...(element.href ? { href: element.href } : {}), ...(element.bounds ? { bounds: element.bounds } : {}) });
         result.tree = result.tree.split(`[ref=${element.id}]`).join(`[ref=${ref}]`);
       }
-      parts.push(`Frame ${index} (${result.url}):\n${result.tree.slice(0, index === 0 ? 20_000 : 3_000)}`);
+      parts.push(`Frame ${index} (${result.url}):\n${index === 0 ? result.tree : cut(result.tree, 3_000)}`);
     }
     this.#refs.set(sessionId, refs);
     this.#frameInfos.set(sessionId, infos);
     session.observed = { generation, tabKey: key, url: normalize(main?.url ?? tab.url ?? ''), ...(top.documentId ? { documentId: top.documentId } : {}) };
     const scroll = main?.scroll ?? { x: 0, y: 0 };
-    const tree = `${parts.join('\n\n')}\n\nScroll: ${scroll.x}, ${scroll.y}`.slice(0, MAX_TREE);
+    // The main frame is already cut to fit (tree.ts), saying so; this cap is for many frames together.
+    const tree = cut(`${parts.join('\n\n')}\n\nScroll: ${scroll.x}, ${scroll.y}`, MAX_TREE);
     return {
       id: this.#uuid(), url: main?.url ?? tab.url ?? '', title: main?.title ?? tab.title ?? '',
       tree, targets, capturedAt: new Date().toISOString(),

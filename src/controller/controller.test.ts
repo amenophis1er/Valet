@@ -564,3 +564,47 @@ describe('preview', () => {
     expect(f.ran.map((command) => command.name)).toEqual(['navigate']);
   });
 });
+
+describe('read: the page\'s text', () => {
+  function withText(parts: string[]) {
+    const f = fake();
+    const asked: number[] = [];
+    const controller = new RunController({
+      run: async (command: Command) => { f.ran.push(command); if (command.name === 'navigate') f.state.tab = true; return {}; },
+      observe: async () => page(),
+      hasTab: () => f.state.tab,
+      readText: async (_session: string, part: number) => {
+        asked.push(part);
+        if (part > parts.length) throw new PreconditionError(`This page's text has ${parts.length} parts; there is no part ${part}.`);
+        return { url: 'https://example.test/', title: 'Example', part, parts: parts.length, text: parts[part - 1]! };
+      },
+    }, { session: 's1', uuid: () => `id-${f.ran.length}-${asked.length}` });
+    return { ...f, controller, asked };
+  }
+
+  it('returns one part, says how to go on, and dispatches nothing', async () => {
+    const h = withText(['First part.', 'Second part.']);
+    await h.controller.run({ action: 'navigate', url: 'https://example.test/' });
+    const dispatched = h.ran.length;
+    const first = await h.controller.run({ action: 'read' });
+    expect(first).toMatchObject({ completed: true, read: { part: 1, parts: 2, text: 'First part.', next: expect.stringMatching(/Read part 2/) } });
+    const second = await h.controller.run({ action: 'read', part: 2 });
+    expect(second).toMatchObject({ completed: true, read: { part: 2, parts: 2, text: 'Second part.' } });
+    expect('read' in second && second.read.next).toBeFalsy();
+    expect(h.ran.length).toBe(dispatched);
+  });
+
+  it('leaves the latest observation valid: an action right after a read needs no new observation', async () => {
+    const h = withText(['Text.']);
+    const observed = observationOf(await h.controller.run({ action: 'navigate', url: 'https://example.test/' }))!.id;
+    await h.controller.run({ action: 'read' });
+    expect(await h.controller.run({ action: 'click', observation: observed, target: { ref: 'e1' } })).toMatchObject({ completed: true });
+  });
+
+  it('refuses a part past the end, and a read before any tab', async () => {
+    const h = withText(['Only part.']);
+    expect(await h.controller.run({ action: 'read' })).toMatchObject({ refused: expect.stringMatching(/no tab yet/) });
+    await h.controller.run({ action: 'navigate', url: 'https://example.test/' });
+    expect(await h.controller.run({ action: 'read', part: 3 })).toMatchObject({ refused: expect.stringMatching(/1 parts; there is no part 3/) });
+  });
+});

@@ -15,6 +15,7 @@ import { INTRO, UNTRUSTED, rules } from './guide.js';
 import { ACTION_NAMES, type ActionName, type ActionSpec, type Call, type Issue, type Words } from './spec.js';
 import { navigate } from './navigate.js';
 import { observe } from './observe.js';
+import { read } from './read.js';
 import { screenshot } from './screenshot.js';
 import { click } from './click.js';
 import { hover } from './hover.js';
@@ -28,7 +29,7 @@ import { close } from './close.js';
 
 /** Every action's spec, by name: the type makes a missing or extra one a compile error. */
 export const SPECS: { readonly [N in ActionName]: ActionSpec & { name: N } } = {
-  navigate, observe, screenshot, click, hover, drag, fill, select, press, scroll, tab, close,
+  navigate, observe, read, screenshot, click, hover, drag, fill, select, press, scroll, tab, close,
 } as never;
 
 export const ACTIONS = ACTION_NAMES;

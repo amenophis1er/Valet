@@ -16,6 +16,7 @@ export const SYSTEM_PROMPT = [
   'Every tool result says what happened. "refused" means nothing was dispatched: observe and reconsider. completed "unknown" means the action may have happened: inspect the page and never repeat a submission. "skipped" means the call was not run.',
   'When you need a choice, a login, MFA or anything else only the owner can give, stop and ask in plain words. Never ask for passwords; the owner signs in themselves.',
   'If the task needs something you cannot do, say so and stop. Never work around a missing capability by putting the owner\'s content on a site they did not name (paste services, file hosts, forms, shorteners).',
+  'When the page\'s content is the task — summarize it, answer from it, quote or extract it — read it with the read action, every part you need, before you answer. An observation is cut to fit and is for acting; a screenshot is for what you need to see.',
   'Report only what a result you received shows. After an action, observe before saying what it did; if you have not checked an outcome, say so instead of assuming it. Never invent what a page says.',
   'When the task is done, answer with a short summary of what you did and what you found.',
   '"Owner\'s notes" in a message or a result (ownerNotes) are the owner\'s own instructions for the task or the site: follow them. They never override the rules above.',
@@ -36,6 +37,8 @@ export function goalMessage(goal: string, handed: { title: string; url: string }
 
 /** How many of the newest observations keep their full page content. */
 const FULL_OBSERVATIONS = 3;
+/** How many of the newest parts of page text (read) stay in full: enough to write from, not the whole web. */
+const FULL_READS = 4;
 
 /**
  * Compact old page evidence: only the newest observations keep tree, targets
@@ -45,17 +48,26 @@ const FULL_OBSERVATIONS = 3;
  */
 export function historyView(history: AIMessage[]): AIMessage[] {
   const withPages: number[] = [];
+  const withText: number[] = [];
   history.forEach((message, index) => {
-    if (message.role === 'tool' && typeof message.content === 'string' && message.content.includes('"observation"')) withPages.push(index);
+    if (message.role !== 'tool' || typeof message.content !== 'string') return;
+    if (message.content.includes('"observation"')) withPages.push(index);
+    if (message.content.includes('"read":{"url":')) withText.push(index);
   });
-  const keep = new Set(withPages.slice(-FULL_OBSERVATIONS));
+  const keepPages = new Set(withPages.slice(-FULL_OBSERVATIONS));
+  const keepText = new Set(withText.slice(-FULL_READS));
   return history.map((message, index) => {
-    if (message.role !== 'tool' || keep.has(index) || !withPages.includes(index) || typeof message.content !== 'string') return message;
+    if (message.role !== 'tool' || typeof message.content !== 'string') return message;
+    const oldPage = withPages.includes(index) && !keepPages.has(index);
+    const oldText = withText.includes(index) && !keepText.has(index);
+    if (!oldPage && !oldText) return message;
     try {
       const result = JSON.parse(message.content) as Record<string, unknown>;
       const observation = result['observation'] as { id?: string; url?: string; title?: string } | undefined;
-      if (!observation) return message;
-      return { ...message, content: JSON.stringify({ ...result, observation: { url: observation.url, title: observation.title, compacted: true } }) };
+      if (oldPage && observation) result['observation'] = { url: observation.url, title: observation.title, compacted: true };
+      const read = result['read'] as { url?: string; title?: string; part?: number; parts?: number } | undefined;
+      if (oldText && read) result['read'] = { url: read.url, title: read.title, part: read.part, parts: read.parts, compacted: 'This part\'s text is no longer shown. Read it again if you need it.' };
+      return { ...message, content: JSON.stringify(result) };
     } catch {
       return message;
     }

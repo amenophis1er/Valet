@@ -108,6 +108,17 @@ saves it from the panel's ⋯ menu (**Save run trace**) as one JSON file that
 also holds the conversation as the model had it, images left out. It contains
 what the agent read and typed on pages; the file says so.
 
+## Reading a page
+
+An observation is for acting: the page as controls with refs, cut to fit at
+20,000 characters for the main page, because every action returns one and the
+newest three stay in the history. A cut observation says so. When the content
+itself is the task — summarize, answer from, extract — the model uses `read`:
+the page's main content as light Markdown (headings, paragraphs, lists,
+tables), without menus, sidebars, footers or hidden parts, in parts of about
+12,000 characters. It dispatches nothing, the latest observation stays valid,
+and only the newest four parts stay in full in the history.
+
 ## Safety guarantees
 
 - **The extension enforces, not the model.** Scope, form approval and fresh

@@ -33,9 +33,14 @@ export interface ExecutorLike {
   refAt?(session: string, point: { x: number; y: number }): Promise<{ ref: string; role: string; name: string; href?: string }>;
   /** Learning: the cursor onto where the next action would go, dispatching nothing. */
   preview?(session: string, aim: { target?: unknown; point?: { x: number; y: number } }): Promise<void>;
+  /** One part of the active tab's text, from a page on an allowed origin. */
+  readText?(session: string, part: number, cancel?: Cancellation, allowOrigin?: (origin: string) => boolean): Promise<PageText>;
   /** Whether this session has a tab to observe at all (a navigate has opened one). */
   hasTab(session: string): boolean;
 }
+
+/** One part of a page's text, for `read`. */
+export interface PageText { url: string; title: string; part: number; parts: number; text: string }
 
 export type ToolResult =
   /** The command ran and here is what the page looks like now. */
@@ -50,6 +55,8 @@ export type ToolResult =
   | { error: string; notice: string }
   /** A screenshot: shown to the owner, and to the model when it can see images. Its id is what a click by point names. */
   | { completed: true; screenshot: Capture & { id: string }; notice: string }
+  /** `read`: one part of the page's text; `next` says how to go on when there is more. */
+  | { completed: true; read: PageText & { next?: string }; notice: string }
   /** `close` ran. */
   | { completed: true; closed: true; notice: string }
   /** A terminal guard: this call was not run and the turn ends. */
@@ -172,6 +179,7 @@ export class RunController {
     // The two reads are answered here, without a dispatch: the evidence they produce is the controller's own.
     if (command.action === 'observe') return this.#observe(cancel, false);
     if (command.action === 'screenshot') return this.#screenshot(cancel);
+    if (command.action === 'read') return this.#read(command.part ?? 1, cancel);
 
     // An action by point becomes one on the element found there, checked like any other; a drag's end is a point in the viewport or a target.
     let point: { x: number; y: number } | undefined;
@@ -356,6 +364,21 @@ export class RunController {
       if (error instanceof CancelledError) return { skipped: 'Stopped by the owner.', terminal: 'stopped' };
       if (error instanceof PreconditionError) return { refused: sentence(error), notice: UNTRUSTED };
       return { error: `The screenshot failed: ${sentence(error)}`, notice: 'Nothing was dispatched.' };
+    }
+  }
+
+  /** The page's text, one part: nothing is dispatched, and the latest observation stays valid. */
+  async #read(part: number, cancel: Cancellation): Promise<ToolResult> {
+    if (!this.#executor.readText) return { refused: 'Reading a page\'s text is not available here. Observe instead.', notice: UNTRUSTED };
+    if (!this.#executor.hasTab(this.#session)) return { refused: 'There is no tab yet. Navigate first.', notice: UNTRUSTED };
+    try {
+      const page = await this.#executor.readText(this.#session, part, cancel, (origin) => this.#gate.verdict(origin) === 'allowed');
+      const next = page.part < page.parts ? `This is part ${page.part} of ${page.parts}. Read part ${page.part + 1} for more of this page.` : undefined;
+      return { completed: true, read: { ...page, ...(next ? { next } : {}) }, notice: UNTRUSTED };
+    } catch (error) {
+      if (error instanceof CancelledError) return { skipped: 'Stopped by the owner.', terminal: 'stopped' };
+      if (error instanceof PreconditionError) return { refused: sentence(error), notice: UNTRUSTED };
+      return { error: `Reading the page failed: ${sentence(error)}`, notice: 'Nothing was dispatched.' };
     }
   }
 

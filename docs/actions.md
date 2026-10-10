@@ -13,6 +13,7 @@ Every call is validated, then checked by the run controller (fresh evidence, the
 | --- | --- | --- | --- | --- |
 | `navigate` | no | `url` | `newTab` | goes to a URL (scope-checked) |
 | `observe` | no | — | — | — |
+| `read` | no | — | `part` | — |
 | `screenshot` | no | — | — | — |
 | `click` | yes | — | `target`, `point`, `screenshot`, `count`, `button` | may follow a link (scope-checked); may submit a form (owner approves) |
 | `hover` | yes | — | `target`, `point`, `screenshot` | — |
@@ -33,6 +34,10 @@ Start with {action:"navigate",url:"https://..."}: it goes there in the tab you a
 ### `observe`
 
 observe reads the page again: a fresh observation with new refs, when the page may have changed on its own.
+
+### `read`
+
+read gives you the text of the current page — its main content, headings, lists and tables, without menus or refs — in parts of a few thousand words. Use it whenever the content is the task (summarize, answer from, quote or extract a page): an observation is cut to fit and is for acting, not reading. A result says which part it is and how many there are; read the next part until you have what the task needs before you answer.
 
 ### `screenshot`
 
@@ -89,5 +94,6 @@ close closes this conversation's tabs.
 | `value` | `string` | Required for fill (the text) and select (an option label, text or value). |
 | `key` | `Enter` \| `Tab` \| `Escape` \| `ArrowDown` \| `ArrowUp` \| `ArrowLeft` \| `ArrowRight` \| `Space` \| `Backspace` | Required for press, with a target. |
 | `direction` | `up` \| `down` | Required for scroll. |
+| `part` | `integer` | read only: which part of a long page's text, from 1. Default 1; a result says how many parts there are. Refused on any other action. |
 | `tabId` | `string` | Required for tab: an id from observation.tabs. |
 | `observation` | `string` | REQUIRED for click, hover, drag, fill, select, press and scroll. Copy observation.id from the most recent result, including recovery results. Never reuse after a dispatched action. |
