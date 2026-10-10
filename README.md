@@ -141,7 +141,7 @@ its panels (click the icon again). Each part compares what is on disk with the
 build it came from, so a change made while the worker was asleep is picked up
 the moment it wakes. What is typed in the composer is kept until it is sent.
 To work on the model library at the same time, link your checkout and the
-watcher follows its build: `npm install --no-save ../extension-ai-connect`.
+watcher follows its build: `npm install --no-save ../byok`.
 
 | Where | What |
 | --- | --- |
@@ -155,7 +155,7 @@ watcher follows its build: `npm install --no-save ../extension-ai-connect`.
 | `src/panel.ts`, `static/` | The side panel |
 
 Model connectivity comes from
-[extension-ai-connect](https://github.com/amenophis1er/extension-ai-connect),
+[byok](https://github.com/amenophis1er/byok),
 a small library for bring-your-own-key AI in extensions.
 
 ## Limitations

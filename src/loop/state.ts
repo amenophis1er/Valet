@@ -4,7 +4,7 @@
  * parts can share it without depending on the loop itself.
  */
 
-import type { AIContentPart, AIMessage } from '@amenophis1er/extension-ai-connect/types';
+import type { AIContentPart, AIMessage } from '@amenophis1er/byok/types';
 import { newScope, type Scope } from '../scope/scope.js';
 import type { Approval, RunStatus, TranscriptEntry } from './protocol.js';
 

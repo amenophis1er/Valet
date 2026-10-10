@@ -5,8 +5,8 @@
  * side panel reloads itself when only panel files changed. Load dist/ unpacked
  * once; after that, save and watch.
  *
- * Working on extension-ai-connect at the same time: `npm install --no-save
- * ../extension-ai-connect` links the checkout into node_modules, and its dist/
+ * Working on byok at the same time: `npm install --no-save
+ * ../byok` links the checkout into node_modules, and its dist/
  * is watched too (build it there with `npm run build`, or its own watcher).
  */
 import { lstat, realpath } from 'node:fs/promises';
@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { buildExtension } from './build.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const LIBRARY = path.join(root, 'node_modules', '@amenophis1er', 'extension-ai-connect');
+const LIBRARY = path.join(root, 'node_modules', '@amenophis1er', 'byok');
 let pending;
 let building = false;
 
@@ -52,7 +52,7 @@ for (const dir of ['src', 'static']) watchDir(path.join(root, dir), dir);
 const linked = await lstat(LIBRARY).then((stat) => stat.isSymbolicLink(), () => false);
 if (linked) {
   const libraryDist = path.join(await realpath(LIBRARY), 'dist');
-  if (await lstat(libraryDist).then(() => true, () => false)) watchDir(libraryDist, 'extension-ai-connect/dist');
-  else console.log(`extension-ai-connect is linked but not built: run its build, then start this again to watch it.`);
+  if (await lstat(libraryDist).then(() => true, () => false)) watchDir(libraryDist, 'byok/dist');
+  else console.log(`byok is linked but not built: run its build, then start this again to watch it.`);
 }
 console.log(`Watching ${watched.join(', ')}. Load ${path.join(root, 'dist')} unpacked once; it reloads itself.`);

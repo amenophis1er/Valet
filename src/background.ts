@@ -1,15 +1,15 @@
 /*
- * The background worker: provider connections (extension-ai-connect), the
+ * The background worker: provider connections (byok), the
  * executor, and one conversation per tab the panel is opened on — each with
  * its run controller and agent loop — wired to the real `chrome.*`. The side
  * panel is registered per tab, so a conversation shows only on its own tab
  * (and on the tabs its agent opens). A panel talks to its conversation over
- * one port (loop/protocol.ts); settings go through extension-ai-connect's
+ * one port (loop/protocol.ts); settings go through byok's
  * message handlers.
  */
 
-import { chat, createAiMessageHandler } from '@amenophis1er/extension-ai-connect/background';
-import type { AIConfigView } from '@amenophis1er/extension-ai-connect/types';
+import { chat, createAiMessageHandler } from '@amenophis1er/byok/background';
+import type { AIConfigView } from '@amenophis1er/byok/types';
 import { RunController, type ScopeGate } from './controller/controller.js';
 import { devReload } from './dev.js';
 import type { WorkerChrome } from './executor/chrome.js';

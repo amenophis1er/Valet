@@ -3,7 +3,7 @@
  * loop: the conversation's state and the few things they may do with it.
  */
 
-import type { AIToolCall } from '@amenophis1er/extension-ai-connect/types';
+import type { AIToolCall } from '@amenophis1er/byok/types';
 import type { Persisted } from './state.js';
 import type { TraceInput } from './trace.js';
 

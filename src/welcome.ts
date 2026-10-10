@@ -4,7 +4,7 @@
  * gets out of the way.
  */
 
-import { createAiClient } from '@amenophis1er/extension-ai-connect/client';
+import { createAiClient } from '@amenophis1er/byok/client';
 import { setupConnections } from './connections-ui.js';
 import { AI_PREFIX } from './loop/protocol.js';
 

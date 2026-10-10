@@ -15,7 +15,7 @@
  * events go first when the trace outgrows its budget.
  */
 
-import type { AIToolCall } from '@amenophis1er/extension-ai-connect/types';
+import type { AIToolCall } from '@amenophis1er/byok/types';
 
 export type TraceEvent = { at: number } & (
   | { kind: 'run'; goal: string; where: string; mode: string; learn: boolean; model: string }

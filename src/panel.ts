@@ -1,10 +1,10 @@
 /*
  * The side panel: a view over the worker's state.
  * It sends intents over the "panel" port and renders what comes back; it
- * never runs loop logic. Settings go through extension-ai-connect's client.
+ * never runs loop logic. Settings go through byok's client.
  */
 
-import { createAiClient } from '@amenophis1er/extension-ai-connect/client';
+import { createAiClient } from '@amenophis1er/byok/client';
 import { devReload } from './dev.js';
 import { renderMarkdown } from './markdown.js';
 import { setupConnections } from './connections-ui.js';

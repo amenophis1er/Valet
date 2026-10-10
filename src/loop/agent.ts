@@ -15,7 +15,7 @@
  * skills and "Save as skill" (skill-notes.ts), and Learn (learn.ts).
  */
 
-import type { AIChatRequest, AIChatResult, AIContentPart, AIMessage, AIToolCall } from '@amenophis1er/extension-ai-connect/types';
+import type { AIChatRequest, AIChatResult, AIContentPart, AIMessage, AIToolCall } from '@amenophis1er/byok/types';
 import type { AskReason, Fingerprint, RunController, ToolResult } from '../controller/controller.js';
 import { BROWSER_TOOL, describeStep } from '../actions/index.js';
 import { Cancellation } from '../executor/protocol.js';

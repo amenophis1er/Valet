@@ -1,5 +1,5 @@
 /*
- * The network rules subscription sign-ins need (extension-ai-connect): on
+ * The network rules subscription sign-ins need (byok): on
  * Anthropic's and OpenAI's endpoints, requests must not look like they come
  * from a web page, so these strip Origin and Sec-Fetch-* and set the
  * user-agent those backends expect.
@@ -16,7 +16,7 @@
  * (9001–9003, 9010) sit outside containment's range.
  */
 
-import rules from '@amenophis1er/extension-ai-connect/dnr-rules.json' with { type: 'json' };
+import rules from '@amenophis1er/byok/dnr-rules.json' with { type: 'json' };
 import type { DnrLike, SessionRule } from './containment.js';
 
 type LibraryRule = { id: number; priority: number; action: object; condition: Record<string, unknown> };

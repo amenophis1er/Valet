@@ -6,8 +6,8 @@
  * `setupConnections()` wires it.
  */
 
-import type { AiClient } from '@amenophis1er/extension-ai-connect/client';
-import type { ConnectionView } from '@amenophis1er/extension-ai-connect/types';
+import type { AiClient } from '@amenophis1er/byok/client';
+import type { ConnectionView } from '@amenophis1er/byok/types';
 import { iconButton, TRASH } from './ui.js';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;

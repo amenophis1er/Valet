@@ -24,7 +24,7 @@ flowchart LR
     CS[Content script<br/>executor/content.ts]
     Ov[Overlay<br/>executor/overlay.ts]
   end
-  Model[(Model provider<br/>extension-ai-connect)]
+  Model[(Model provider<br/>byok)]
 
   UI <-->|port: intents / state| Loop
   Loop <-->|chat with tools| Model

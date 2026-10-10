@@ -7,7 +7,7 @@
  * gate — and turns them into content parts for the owner's message.
  */
 
-import type { AIContentPart } from '@amenophis1er/extension-ai-connect/types';
+import type { AIContentPart } from '@amenophis1er/byok/types';
 
 export interface Attachment {
   kind: 'image' | 'pdf' | 'text' | 'other';

@@ -5,7 +5,7 @@
  * the newest screenshots; the owner can open the newest dozen.
  */
 
-import type { AIContentPart, AIMessage, AIToolCall } from '@amenophis1er/extension-ai-connect/types';
+import type { AIContentPart, AIMessage, AIToolCall } from '@amenophis1er/byok/types';
 import type { ToolResult } from '../controller/controller.js';
 import type { Attachment } from './attachments.js';
 import { PDF_TYPE, saveFile } from './files.js';

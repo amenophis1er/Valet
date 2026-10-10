@@ -3,7 +3,7 @@
  * fake executor: one call id → one result, batches, guards, Stop, amendments,
  * and a restart mid-run.
  */
-import type { AIChatRequest, AIChatResult, AIMessage } from '@amenophis1er/extension-ai-connect/types';
+import type { AIChatRequest, AIChatResult, AIMessage } from '@amenophis1er/byok/types';
 import { describe, expect, it } from 'vitest';
 import { RunController, type ExecutorLike, type ScopeGate } from '../controller/controller.js';
 import type { ExecutorObservation } from '../executor/commands.js';

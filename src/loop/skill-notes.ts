@@ -8,7 +8,7 @@
  * transcript, so the owner sees which notes the agent was following.
  */
 
-import type { AIChatRequest, AIChatResult, AIMessage } from '@amenophis1er/extension-ai-connect/types';
+import type { AIChatRequest, AIChatResult, AIMessage } from '@amenophis1er/byok/types';
 import { MAX_SKILL_CHARS, applicable, skillsText, type Skill } from '../skills/skills.js';
 import type { Connection } from './state.js';
 import type { LoopHost } from './host.js';

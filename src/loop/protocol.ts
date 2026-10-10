@@ -25,7 +25,7 @@ export function conversationOfPort(name: string): string | null {
 }
 /** The panel page for a tab's conversation: what the side panel on that tab shows. */
 export function panelPath(tabId: number): string { return `panel.html?tab=${tabId}`; }
-/** Message prefix for extension-ai-connect's handlers in this extension. */
+/** Message prefix for byok's handlers in this extension. */
 export const AI_PREFIX = 'agent';
 export const HEARTBEAT_MS = 20_000;
 /** Screenshots and files live apart from the transcript, in chrome.storage.session, under this prefix and their id. */

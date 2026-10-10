@@ -7,7 +7,7 @@
  * the user's goal message instead.
  */
 
-import type { AIMessage } from '@amenophis1er/extension-ai-connect/types';
+import type { AIMessage } from '@amenophis1er/byok/types';
 import { UNTRUSTED } from '../actions/index.js';
 
 export const SYSTEM_PROMPT = [
