@@ -5,7 +5,7 @@
  * another extension's frame keeps the debugger out.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { pressRef } from './commands.js';
+import { pressRef } from './page.js';
 
 function registry(element: Element): void {
   (globalThis as Record<string, unknown>)['__valetPageRegistry'] = { refs: new Map([['e1', new WeakRef(element)]]) };

@@ -1,5 +1,5 @@
 /*
- * One command, one browser action.
+ * The executor: one command in, one browser action out.
  *
  * A session (one conversation) works in the tab the owner handed it — the
  * page they had open when they asked — and in the tabs it opens itself,
@@ -8,18 +8,27 @@
  * them away again; a crashed worker does not, because by then those tabs are
  * the owner's.
  *
+ * This file owns the sessions, the tabs, observation, screenshots and the
+ * debugger. How each input is made — a click, a key, a drag — is in input/*,
+ * one file per action, reached through the narrow Driver interface
+ * (driver.ts). Code that runs inside pages is in page.ts and overlay.ts.
+ *
  * Input goes through the debugger rather than through synthetic DOM events:
  * `Input.dispatchMouseEvent` reaches a background tab and produces trusted
- * events. Inside a subframe, where the debugger's viewport coordinates would
- * need the frame's offset in the top document, the page side acts on the
- * element directly — as it does in the whole tab when another extension's
- * frame keeps the debugger out.
+ * events. Where the debugger cannot reach — a frame from another site, or a
+ * tab another extension's frame keeps it out of — the page side acts on the
+ * element directly.
  */
 
 import type { TabInfo, WorkerChrome } from './chrome.js';
 import { Cancellation, PreconditionError, type Command, type CommandResult, type Observation, type ObservedTarget } from './protocol.js';
 import type { SubmitFingerprint } from './content.js';
-import type { CollectedElement } from './tree.js';
+import { DEBUGGER_KEPT_OUT, DebuggerKeptOut, type Driver, type Pace, type Ref } from './driver.js';
+import { INPUT, type InputName } from './input/index.js';
+import { paintOverlay } from './overlay.js';
+import { frameOffsetRef, listFrames, locateRef, pointAtRef, readObservation, readOrigin, readReadyState, readViewport, submitFactsRef, tokenRef, type FrameObservation } from './page.js';
+
+export type { Pace } from './driver.js';
 
 interface Session {
   id: string;
@@ -36,14 +45,6 @@ interface Session {
   /** The tab and page the last observation described. */
   observed?: { generation: number; tabKey: string; url: string };
 }
-/** What a ref points at, and what it looked like, so a semantic target can find it again. */
-interface Ref {
-  tabKey: string; tabId: number; frameId: number; local: string; frame: number; role: string; name: string;
-  /** The document the ref was read from, and the observation it belongs to. */
-  docUrl: string; generation: number;
-  /** Chrome's id for that document; a script aimed at it fails once the frame navigates. */
-  documentId?: string;
-}
 
 /** One frame of an observation, for the run controller (redaction, scope). Never shown to the model. */
 export interface FrameInfo { index: number; frameId: number; documentId?: string; origin: string; url: string }
@@ -51,29 +52,17 @@ export interface FrameInfo { index: number; frameId: number; documentId?: string
 /** What the executor returns from `observe`: the model's observation plus the frame metadata. */
 export interface ExecutorObservation extends Observation { frames: FrameInfo[] }
 
-/** The mouse cannot be aimed into a frame from another site: its place in the viewport cannot be read. */
-const OTHER_SITE_FRAME = 'That element is inside a frame from another site, where the mouse cannot be aimed. Use a ref in the page itself.';
 /** The group a conversation's tabs make with the owner's tab. */
 const GROUP_TITLE = 'valet';
 /** Chrome's words when a frame of another extension is in the tab: its debugger stays out of the whole tab while that frame is there. */
 const OTHER_EXTENSION = /chrome-extension:\/\/ URL of different extension/i;
-const DEBUGGER_KEPT_OUT = 'Another extension has a frame of its own in this page (a password manager\'s menu, for instance), and Chrome keeps the agent\'s debugger out while it is there.';
 
-/** The debugger was refused on this tab because of another extension's frame; `sent` says how much of the action had gone through it before. */
-class DebuggerKeptOut extends Error {
-  constructor(message: string, readonly sent: number) { super(message); }
-}
 /** The page under a ref is not the page the ref was read from. */
 const MOVED = 'This page has changed since that observation. Observe again.';
 const STALE = 'Stale page observation. Observe again and use a fresh ref.';
 /** The owner's Chrome withholds site access from the extension (Details → Site access). */
 const NO_ACCESS = 'The extension is not allowed to read this site. Ask the owner to set Valet\'s site access to "On all sites" (chrome://extensions → Details), then observe again.';
 
-interface FrameObservation {
-  url: string; title: string; tree: string; elements: CollectedElement[]; scroll: { x: number; y: number };
-  /** `self.origin` in that frame: inherited for about:blank/srcdoc, "null" when opaque. */
-  origin?: string;
-}
 
 /** The executor reads the main frame plus ten, and caps the whole tree at 32k. */
 const MAX_FRAMES = 11;
@@ -95,25 +84,10 @@ const CURSOR_MS = 350;
  * way (the debugger); only the rhythm changes. Never a disguise: no fake
  * mistakes, no wandering.
  */
-/** fast: each action at once. natural: a person's rhythm (also whenever Learning is on). */
-export type Pace = 'fast' | 'natural';
 
 /** What the agent is about to do, shown in a bubble at its cursor (Learning). */
 export interface Note { text: string; why?: string; waiting: boolean }
-/** In natural pace, at most this many characters are typed key by key; the rest are inserted at once. */
-const MAX_KEYED = 400;
 
-const KEYS: Record<string, { key: string; code: string; keyCode: number; text?: string }> = {
-  Enter: { key: 'Enter', code: 'Enter', keyCode: 13, text: '\r' },
-  Tab: { key: 'Tab', code: 'Tab', keyCode: 9, text: '\t' },
-  Escape: { key: 'Escape', code: 'Escape', keyCode: 27 },
-  ArrowDown: { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 },
-  ArrowUp: { key: 'ArrowUp', code: 'ArrowUp', keyCode: 38 },
-  ArrowLeft: { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37 },
-  ArrowRight: { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 },
-  Space: { key: ' ', code: 'Space', keyCode: 32, text: ' ' },
-  Backspace: { key: 'Backspace', code: 'Backspace', keyCode: 8 },
-};
 
 function str(args: Record<string, unknown>, key: string): string | undefined {
   const value = args[key];
@@ -252,24 +226,61 @@ export class BrowserCommands implements Executor {
 
   async #dispatch(command: Command, cancel: Cancellation): Promise<CommandResult> {
     cancel.check();
-    // Natural pace: a beat before each action, as a person would take (before anything is dispatched).
-    if (this.#pace === 'natural' && ['click', 'hover', 'drag', 'fill', 'select', 'press', 'scroll'].includes(command.name)) await this.#pause(500, 1500, cancel);
+    // An input action (input/*): natural pace takes a beat first, as a person would, before anything is dispatched.
+    if (command.name in INPUT) {
+      if (this.#pace === 'natural') await this.#pause(500, 1500, cancel);
+      return INPUT[command.name as InputName](this.#driver, command, cancel);
+    }
+    // The rest manage tabs and read the page: the executor's own work.
     switch (command.name) {
       case 'navigate': return this.#navigate(command, cancel);
       case 'observe': return { observation: await this.observe(command.session, cancel) };
-      case 'click': return this.#click(command, cancel);
-      case 'hover': return this.#hover(command, cancel);
-      case 'drag': return this.#drag(command, cancel);
-      case 'fill': return this.#fill(command, cancel);
-      case 'select': return this.#select(command, cancel);
-      case 'press': return this.#press(command, cancel);
-      case 'scroll': return this.#scroll(command, cancel);
       case 'tab': return this.#tab(command);
       case 'screenshot': return { screenshot: (await this.capture(command.session, cancel, () => true)).data };
       case 'close': return this.#close(command, cancel);
       default: throw new PreconditionError(`This browser cannot run ${String(command.name)}.`);
     }
   }
+
+  /**
+   * What the input actions get: the checks every one of them shares and the
+   * means to act, and nothing else of the executor (driver.ts).
+   */
+  #driver: Driver = this.#makeDriver();
+
+  #makeDriver(): Driver {
+    // The getter reads the executor's pace at the moment of each step.
+    const executor = this;
+    return {
+    get pace() { return executor.#pace; },
+    wait: (ms) => this.#wait(ms),
+    random: () => this.#random(),
+    mouse: this.#mouse,
+    aim: (command, cancel) => this.#aim(command, cancel),
+    refFor: async (sessionId, target) => this.#ref(sessionId, await this.#session(sessionId), target),
+    locate: (ref, options) => this.#locate(ref, options),
+    viewportPoint: (ref, local) => this.#viewportPoint(ref, local),
+    pointAt: (sessionId, tabId, point) => this.#pointAt(sessionId, tabId, point),
+    script: (ref, func, args) => this.#script(ref, func, args),
+    withDebugger: (tabId, body) => this.#withDebugger(tabId, body),
+    driven: (viaDebugger, viaPage, repeatable) => this.#driven(viaDebugger, viaPage, repeatable),
+    settle: (tabId, before) => this.#settle(tabId, before),
+    observedTab: (sessionId) => this.#observedTab(sessionId),
+    ready: async (tabId) => { await this.#inject(tabId); },
+    inTab: async (tabId, func, args) => { await this.#chrome.scripting.executeScript({ target: { tabId }, func, args }); },
+    };
+  }
+
+  /** The tab of the session's latest observation, still on the page that was read (scroll aims at no element). */
+  async #observedTab(sessionId: string): Promise<number> {
+    const session = await this.#session(sessionId);
+    const observed = session.observed;
+    if (!observed || observed.generation !== session.generation) throw new PreconditionError('Stale page observation. Observe again before scrolling.');
+    const tab = await this.#ownTab(session, observed.tabKey);
+    if (this.#liveUrl(tab) !== observed.url) throw new PreconditionError(MOVED);
+    return tab.id!;
+  }
+
 
   /** The tab the session works in now, as the owner would recognize it. */
   async workspace(sessionId: string): Promise<{ title: string; url: string } | null> {
@@ -1015,48 +1026,6 @@ export class BrowserCommands implements Executor {
     }
   }
 
-  async #click(command: Command, cancel: Cancellation): Promise<CommandResult> {
-    const { ref, tab } = await this.#aim(command, cancel);
-    // A click by point goes exactly where the screenshot showed it, so the page is not scrolled first.
-    const at = command.args['point'] as { x: number; y: number } | undefined;
-    const located = await this.#locate(ref, { mark: true, still: !!at });
-    const point = at ?? await this.#viewportPoint(ref, located.point);
-    await this.#pointAt(command.session, ref.tabId, point);
-    cancel.check();
-    cancel.dispatch();
-    const count = command.args['count'] === 2 ? 2 : 1;
-    const button = command.args['button'] === 'right' ? 'right' : 'left';
-    // A frame from another site has no place in the viewport the worker can read: the element clicks itself.
-    if (!point) {
-      await this.#script(ref, clickRef, [ref.local, count, button]);
-      return {};
-    }
-    await this.#driven(() => this.#withDebugger(ref.tabId, async (send) => {
-      const base = { x: point.x, y: point.y, button, clickCount: 1, buttons: button === 'right' ? 2 : 1 };
-      if (this.#pace === 'natural') {
-        // Along a gentle curve from where the mouse was, then a moment's hover.
-        for (const step of this.#path(ref.tabId, point)) {
-          await send('Input.dispatchMouseEvent', { x: step.x, y: step.y, type: 'mouseMoved', button: 'none', buttons: 0 });
-          await this.#wait(12 + Math.round(14 * this.#random()));
-        }
-        await this.#wait(80 + Math.round(120 * this.#random()));
-      }
-      await send('Input.dispatchMouseEvent', { ...base, type: 'mouseMoved', buttons: 0 });
-      this.#mouse.set(ref.tabId, point);
-      // A Stop between the hover and the press stops the click.
-      cancel.check();
-      // A double-click is two presses, the second counted as such, so the page sees dblclick.
-      for (let n = 1; n <= count; n += 1) {
-        await send('Input.dispatchMouseEvent', { ...base, clickCount: n, type: 'mousePressed' });
-        if (this.#pace === 'natural') await this.#wait(50 + Math.round(60 * this.#random()));
-        // Once pressed, always released: a Stop must never leave the button held.
-        await send('Input.dispatchMouseEvent', { ...base, clickCount: n, type: 'mouseReleased', buttons: 0 });
-        if (n < count) await this.#wait(60);
-      }
-    }), () => this.#script(ref, clickRef, [ref.local, count, button]));
-    await this.#settle(ref.tabId, tab);
-    return {};
-  }
 
   /** An element's place in the tab's viewport: its point in its own document, moved by its frames' boxes; undefined past a frame from another site. */
   async #viewportPoint(ref: Ref, local: { x: number; y: number } | undefined): Promise<{ x: number; y: number } | undefined> {
@@ -1066,207 +1035,14 @@ export class BrowserCommands implements Executor {
     return offset ? { x: local.x + offset.x, y: local.y + offset.y } : undefined;
   }
 
-  /** The mouse onto a target or a point, no button: what opens or shows on hover does. */
-  async #hover(command: Command, cancel: Cancellation): Promise<CommandResult> {
-    const { ref, tab } = await this.#aim(command, cancel);
-    const at = command.args['point'] as { x: number; y: number } | undefined;
-    const point = at ?? await this.#viewportPoint(ref, (await this.#locate(ref, { still: !!at })).point);
-    if (!point) throw new PreconditionError(OTHER_SITE_FRAME);
-    await this.#pointAt(command.session, ref.tabId, point);
-    cancel.check();
-    cancel.dispatch();
-    await this.#driven(() => this.#withDebugger(ref.tabId, async (send) => {
-      await this.#glide(send, ref.tabId, point, 0);
-      await send('Input.dispatchMouseEvent', { x: point.x, y: point.y, type: 'mouseMoved', button: 'none', buttons: 0 });
-      this.#mouse.set(ref.tabId, point);
-    }), () => this.#script(ref, hoverRef, [ref.local]));
-    await this.#settle(ref.tabId, tab);
-    return {};
-  }
 
-  /**
-   * Press on a target or a point, move to `to` (a target or a point) and
-   * release there. The move is always in steps: a page notices a drag by the
-   * motion, not by the two ends. Once pressed, always released.
-   */
-  async #drag(command: Command, cancel: Cancellation): Promise<CommandResult> {
-    const { ref, tab } = await this.#aim(command, cancel);
-    const fromAt = command.args['point'] as { x: number; y: number } | undefined;
-    const end = command.args['to'] as { target?: unknown; point?: { x: number; y: number } } | undefined;
-    if (!end || (!end.target && !end.point)) throw new PreconditionError('drag needs to: where it ends.');
-    // The end first, so scrolling it into view cannot move the start after it was read.
-    let to = end.point;
-    if (!to) {
-      const session = await this.#session(command.session);
-      const endRef = this.#ref(command.session, session, end.target);
-      to = await this.#viewportPoint(endRef, (await this.#locate(endRef, { still: !!fromAt })).point);
-    }
-    const from = fromAt ?? await this.#viewportPoint(ref, (await this.#locate(ref, { mark: true, still: true })).point);
-    if (!from || !to) throw new PreconditionError(OTHER_SITE_FRAME);
-    await this.#pointAt(command.session, ref.tabId, from);
-    cancel.check();
-    // A drag has no page-side stand-in: kept out of the debugger before the press, it is refused with nothing dispatched.
-    await this.#driven(() => this.#withDebugger(ref.tabId, async (send) => {
-      cancel.dispatch();
-      await this.#glide(send, ref.tabId, from, 0);
-      await send('Input.dispatchMouseEvent', { x: from.x, y: from.y, type: 'mouseMoved', button: 'none', buttons: 0 });
-      this.#mouse.set(ref.tabId, from);
-      cancel.check();
-      await send('Input.dispatchMouseEvent', { x: from.x, y: from.y, type: 'mousePressed', button: 'left', buttons: 1, clickCount: 1 });
-      try {
-        if (this.#pace === 'natural') await this.#wait(80 + Math.round(120 * this.#random()));
-        await this.#glide(send, ref.tabId, to, 1);
-        await send('Input.dispatchMouseEvent', { x: to.x, y: to.y, type: 'mouseMoved', button: 'left', buttons: 1 });
-        this.#mouse.set(ref.tabId, to);
-        await this.#pointAt(command.session, ref.tabId, to);
-        if (this.#pace === 'natural') await this.#wait(60 + Math.round(80 * this.#random()));
-      } finally {
-        await send('Input.dispatchMouseEvent', { x: to.x, y: to.y, type: 'mouseReleased', button: 'left', buttons: 0, clickCount: 1 });
-      }
-    }), () => { throw new PreconditionError(`${DEBUGGER_KEPT_OUT} A drag needs it; nothing was dispatched. Try a click, or ask the owner.`); });
-    await this.#settle(ref.tabId, tab);
-    return {};
-  }
 
-  /** The mouse along a curve from where it was in this tab to `to`, with the buttons held as given; a beat between steps so the page sees motion. */
-  async #glide(send: (method: string, params?: unknown) => Promise<unknown>, tabId: number, to: { x: number; y: number }, buttons: 0 | 1): Promise<void> {
-    for (const step of this.#path(tabId, to)) {
-      await send('Input.dispatchMouseEvent', { x: step.x, y: step.y, type: 'mouseMoved', button: buttons ? 'left' : 'none', buttons });
-      await this.#wait(this.#pace === 'natural' ? 12 + Math.round(14 * this.#random()) : 8);
-    }
-  }
 
-  async #fill(command: Command, cancel: Cancellation): Promise<CommandResult> {
-    const { ref } = await this.#aim(command, cancel);
-    const value = str(command.args, 'value') ?? '';
-    // A line break typed into a one-line field is an Enter, which can submit the form without the
-    // approval a press gets: refused before anything is touched. (A textarea takes line breaks.)
-    if (/[\r\n]/.test(value)) {
-      const { multiline } = await this.#locate(ref, { still: true });
-      if (!multiline) throw new PreconditionError('That field takes one line; a line break in the value would press Enter. Fill it without the line break, then use press with key Enter if you mean to submit.');
-    }
-    // Focusing and clearing the field is already a change to the page.
-    cancel.dispatch();
-    const { setByValue, keyByKey, point } = await this.#locate(ref, { focus: true, clear: true });
-    if (ref.frameId === 0) await this.#pointAt(command.session, ref.tabId, point);
-    cancel.check();
-    // Subframes, and pickers (time, date, color…) that ignore inserted text, get the value set directly.
-    if (ref.frameId !== 0 || setByValue) {
-      await this.#script(ref, typeRef, [ref.local, value]);
-      return {};
-    }
-    const byPage = () => this.#script(ref, typeRef, [ref.local, value]);
-    // Natural pace, or a field that reacts to each key (suggestions, search-as-you-type): key by key.
-    if (this.#pace === 'natural' || keyByKey) {
-      const natural = this.#pace === 'natural';
-      const characters = [...value];
-      const keyed = natural ? characters.slice(0, MAX_KEYED) : characters;
-      await this.#driven(() => this.#withDebugger(ref.tabId, async (send) => {
-        for (const character of keyed) {
-          await this.#typeKey(send, character);
-          await this.#wait(natural ? 40 + Math.round(100 * this.#random()) : 12 + Math.round(20 * this.#random()));
-          // A Stop mid-word leaves the field half typed: dispatch had begun, so the outcome is unknown.
-          cancel.check();
-        }
-        if (keyed.length < characters.length) await send('Input.insertText', { text: characters.slice(keyed.length).join('') });
-      }), byPage, true);
-      return {};
-    }
-    await this.#driven(() => this.#withDebugger(ref.tabId, (send) => send('Input.insertText', { text: value })), byPage, true);
-    return {};
-  }
 
-  /** One character as a key press: Enter for a line break, the character's own key otherwise. */
-  async #typeKey(send: (method: string, params?: unknown) => Promise<unknown>, character: string): Promise<void> {
-    if (character === '\n') {
-      const enter = { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 };
-      await send('Input.dispatchKeyEvent', { ...enter, type: 'keyDown', text: '\r' });
-      await send('Input.dispatchKeyEvent', { ...enter, type: 'keyUp' });
-      return;
-    }
-    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: character, text: character, unmodifiedText: character });
-    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: character });
-  }
 
-  /** A few points on a gentle curve from the mouse's last place in this tab to the target. */
-  #path(tabId: number, to: { x: number; y: number }): Array<{ x: number; y: number }> {
-    const from = this.#mouse.get(tabId) ?? { x: Math.max(0, to.x - 160), y: to.y + 120 };
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    const bend = (this.#random() - 0.5) * 0.3;
-    const control = { x: from.x + dx / 2 - dy * bend, y: from.y + dy / 2 + dx * bend };
-    const steps = 8;
-    const points: Array<{ x: number; y: number }> = [];
-    for (let i = 1; i < steps; i += 1) {
-      const t = i / steps;
-      // Eased, so it starts and ends slower.
-      const e = t * t * (3 - 2 * t);
-      points.push({
-        x: Math.round((1 - e) ** 2 * from.x + 2 * (1 - e) * e * control.x + e ** 2 * to.x),
-        y: Math.round((1 - e) ** 2 * from.y + 2 * (1 - e) * e * control.y + e ** 2 * to.y),
-      });
-    }
-    return points;
-  }
 
-  async #press(command: Command, cancel: Cancellation): Promise<CommandResult> {
-    const key = str(command.args, 'key') ?? '';
-    const descriptor = KEYS[key];
-    if (!descriptor) throw new PreconditionError(`This browser cannot press ${key}.`);
-    const { ref, tab } = await this.#aim(command, cancel);
-    cancel.dispatch();
-    const { point } = await this.#locate(ref, { focus: true });
-    if (ref.frameId === 0) await this.#pointAt(command.session, ref.tabId, point);
-    cancel.check();
-    if (ref.frameId !== 0) {
-      await this.#script(ref, pressRef, [ref.local, descriptor.key, descriptor.code, descriptor.keyCode]);
-      return {};
-    }
-    await this.#driven(() => this.#withDebugger(ref.tabId, async (send) => {
-      const common = { key: descriptor.key, code: descriptor.code, windowsVirtualKeyCode: descriptor.keyCode, nativeVirtualKeyCode: descriptor.keyCode };
-      await send('Input.dispatchKeyEvent', { ...common, type: descriptor.text ? 'keyDown' : 'rawKeyDown', ...(descriptor.text ? { text: descriptor.text } : {}) });
-      await send('Input.dispatchKeyEvent', { ...common, type: 'keyUp' });
-    }), () => this.#script(ref, pressRef, [ref.local, descriptor.key, descriptor.code, descriptor.keyCode]));
-    await this.#settle(ref.tabId, tab);
-    return {};
-  }
 
-  async #select(command: Command, cancel: Cancellation): Promise<CommandResult> {
-    const { ref } = await this.#aim(command, cancel);
-    const value = str(command.args, 'value') ?? '';
-    cancel.dispatch();
-    const result = await this.#script<[string, string], { ok: boolean; reason?: string }>(ref, chooseRef, [ref.local, value]);
-    if (!result?.ok) throw new PreconditionError(result?.reason ?? 'That option is not in the list.');
-    return {};
-  }
 
-  /**
-   * Scroll names no element, so what it checks instead is the observation: the
-   * page the model is reading has to be the page still in the tab.
-   */
-  async #scroll(command: Command, cancel: Cancellation): Promise<CommandResult> {
-    const session = await this.#session(command.session);
-    const observed = session.observed;
-    if (!observed || observed.generation !== session.generation) throw new PreconditionError('Stale page observation. Observe again before scrolling.');
-    const tab = await this.#ownTab(session, observed.tabKey);
-    if (this.#liveUrl(tab) !== observed.url) throw new PreconditionError(MOVED);
-    const tabId = tab.id!;
-    const direction = str(command.args, 'direction') === 'up' ? 'up' : 'down';
-    cancel.check();
-    await this.#inject(tabId);
-    cancel.check();
-    cancel.dispatch();
-    if (this.#pace === 'natural') {
-      // The same distance in a few smooth steps.
-      for (let step = 0; step < 4; step += 1) {
-        await this.#chrome.scripting.executeScript<[number], unknown>({ target: { tabId }, func: scrollStep, args: [direction === 'up' ? -150 : 150] });
-        await this.#wait(60 + Math.round(60 * this.#random()));
-      }
-      return {};
-    }
-    await this.#chrome.scripting.executeScript<[('up' | 'down')], unknown>({ target: { tabId }, func: scrollPage, args: [direction] });
-    return {};
-  }
 
   /**
    * A screenshot of the session's active tab, as the owner would see it.
@@ -1424,275 +1200,3 @@ const canvasImaging: Imaging = async (png, viewport, masks) => {
   for (let i = 0; i < buffer.length; i += 0x8000) binary += String.fromCharCode(...buffer.subarray(i, i + 0x8000));
   return { data: btoa(binary), width, height };
 };
-
-/* ---- the functions below run in the page, never in the worker ---- */
-
-/*
- * `chrome.scripting.executeScript` serializes these, so they may not close over
- * anything in this module. Each one is self-contained on purpose.
- */
-
-/*
- * The overlay: a halo around the page the agent works in, and the agent's own
- * cursor — a teal arrow labelled "Valet", distinct from the owner's pointer.
- * One custom element with a closed shadow root, so page styles cannot reach
- * it; it ignores the pointer entirely, and tree.ts skips it.
- */
-function paintOverlay(state: { halo: boolean; cursor?: { x: number; y: number }; note?: { text: string; why?: string; waiting: boolean } | null }): void {
-  const TAG = 'valet-overlay';
-  const holder = globalThis as unknown as Record<string, ShadowRoot | undefined>;
-  let host = document.querySelector(TAG) as HTMLElement | null;
-  if (!state.halo) { host?.remove(); holder['__valetOverlay'] = undefined; return; }
-  let root = holder['__valetOverlay'];
-  if (!host || !root) {
-    host?.remove();
-    host = document.createElement(TAG);
-    host.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483647;display:block;';
-    root = host.attachShadow({ mode: 'closed' });
-    // The design system's overlay: the same in every site, light or dark with the system.
-    root.innerHTML = `<style>
-      :host { all: initial; }
-      .ov { --surface: #FFFFFF; --text: #1B1924; --muted: #5D5970; --accent: #6544D6; --accent-hover: #5737C2; --accent-text: #5A3BC9;
-        --accent-line: #D3C7F7; --on-accent: #FFFFFF; --hover: #F2F0F8; --focus: #6544D6; --ring: rgba(255,255,255,.7);
-        --shadow: 0 18px 44px -12px rgba(30,18,80,.34), 0 3px 10px rgba(30,18,80,.12);
-        position: fixed; inset: 0; pointer-events: none; color: var(--text); -webkit-font-smoothing: antialiased;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Helvetica Neue", sans-serif; }
-      @media (prefers-color-scheme: dark) {
-        .ov { --surface: #1D1B26; --text: #ECEAF3; --muted: #A9A4BB; --accent: #A08AFF; --accent-hover: #B19EFF; --accent-text: #B7A6FF;
-          --accent-line: #4A3F80; --on-accent: #160F2E; --hover: #272535; --focus: #B7A6FF; --ring: rgba(255,255,255,.08);
-          --shadow: 0 20px 48px -12px rgba(0,0,0,.7), 0 3px 10px rgba(0,0,0,.4); }
-      }
-      .halo { position: absolute; inset: 0;
-        box-shadow: inset 0 0 0 2px #7C5CF0, inset 0 0 0 3px rgba(255,255,255,.5), inset 0 0 26px 4px rgba(124,92,240,.24);
-        animation: halo 2400ms cubic-bezier(.45,0,.2,1) infinite; }
-      @keyframes halo { 50% { box-shadow: inset 0 0 0 2px #7C5CF0, inset 0 0 0 3px rgba(255,255,255,.5), inset 0 0 40px 8px rgba(124,92,240,.42); } }
-      .cursor { position: absolute; left: 0; top: 0; width: 24px; height: 24px; transform: translate(-100px, -100px); transition: transform 260ms cubic-bezier(.2,.8,.2,1); }
-      .cursor svg { display: block; filter: drop-shadow(0 2px 3px rgba(20,10,60,.4)); }
-      .cursor .tag { position: absolute; left: 18px; top: 20px; padding: 2px 7px; border-radius: 6px; white-space: nowrap;
-        background: #5A3BC9; color: #fff; font-size: 11px; line-height: 14px; font-weight: 600; box-shadow: 0 0 0 1.5px #fff, 0 2px 6px rgba(20,10,60,.3); }
-      .note { position: absolute; left: 0; top: 0; width: 290px; max-width: calc(100vw - 24px); padding: 12px 14px 14px; border-radius: 12px; pointer-events: auto;
-        background: var(--surface); border: 1px solid var(--accent-line); box-shadow: 0 0 0 1px var(--ring), var(--shadow);
-        display: none; flex-direction: column; gap: 6px; transition: left 260ms cubic-bezier(.2,.8,.2,1), top 260ms cubic-bezier(.2,.8,.2,1); }
-      .note.on { display: flex; animation: rise 260ms cubic-bezier(.2,.8,.2,1); }
-      @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
-      .note .lead { font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent-text); }
-      .note .what { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; }
-      .note .why { margin: 0; font-size: 12px; line-height: 17px; color: var(--muted); }
-      .note .doing { font-size: 12px; line-height: 17px; font-style: italic; color: var(--accent-text); }
-      .note .actions { display: flex; gap: 6px; margin-top: 4px; }
-      .note button { appearance: none; display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 0 14px; border-radius: 10px; border: 1px solid transparent; background: transparent;
-        color: var(--muted); font: inherit; font-size: 13px; line-height: 18px; font-weight: 600; cursor: pointer; }
-      .note button:hover { background: var(--hover); color: var(--text); }
-      .note button.next { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-      .note button.next:hover { background: var(--accent-hover); color: var(--on-accent); }
-      .note button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-      @media (prefers-reduced-motion: reduce) {
-        .halo { animation: none; box-shadow: inset 0 0 0 2px #7C5CF0, inset 0 0 0 3px rgba(255,255,255,.5), inset 0 0 30px 6px rgba(124,92,240,.3); }
-        .cursor, .note { transition: none; } .note.on { animation: none; }
-      }
-    </style><div class="ov"><div class="halo"></div><div class="cursor"><svg width="24" height="24" viewBox="0 0 24 24">
-      <path d="M4.6 3.9 19.8 10.7 12.9 12.9 10.7 19.8Z" fill="#6A48E6" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg><span class="tag">Valet</span></div>
-      <div class="note"><span class="lead">Next step</span><p class="what"></p><p class="why"></p><span class="doing">Doing it…</span>
-      <div class="actions"><button type="button" class="next">Next step</button><button type="button" class="stop">Stop</button></div></div></div>`;
-    // The owner's Next or Stop, straight from the page: the worker takes them only from this extension's own scripts.
-    const runtime = (globalThis as unknown as { chrome?: { runtime?: { sendMessage(message: unknown): Promise<unknown> } } }).chrome?.runtime;
-    (root.querySelector('.note .next') as HTMLButtonElement).onclick = () => { runtime?.sendMessage({ type: 'agent:step' }).catch(() => undefined); };
-    (root.querySelector('.note .stop') as HTMLButtonElement).onclick = () => { runtime?.sendMessage({ type: 'agent:stop' }).catch(() => undefined); };
-    document.documentElement.append(host);
-    holder['__valetOverlay'] = root;
-  }
-  const cursor = root.querySelector('.cursor') as HTMLElement;
-  // The arrow's tip is at (4.6, 3.9) in its 24-unit box: that point goes on the target.
-  if (state.cursor) cursor.style.transform = `translate(${state.cursor.x - 5}px, ${state.cursor.y - 4}px)`;
-  // The bubble: what comes next and why, with Next while the agent waits; built from text only.
-  const note = root.querySelector('.note') as HTMLElement;
-  note.classList.toggle('on', !!state.note);
-  if (state.note) {
-    (note.querySelector('.what') as HTMLElement).textContent = state.note.text;
-    const why = note.querySelector('.why') as HTMLElement;
-    why.textContent = state.note.why ?? '';
-    why.style.display = state.note.why ? 'block' : 'none';
-    (note.querySelector('.next') as HTMLElement).style.display = state.note.waiting ? 'inline-flex' : 'none';
-    (note.querySelector('.doing') as HTMLElement).style.display = state.note.waiting ? 'none' : 'block';
-    // Beside the cursor, kept on screen: below and to the right when there is room, else above or to the left.
-    // With no cursor yet (the first step), at the top centre.
-    const gap = 16;
-    const width = note.offsetWidth;
-    const height = note.offsetHeight;
-    let left = state.cursor ? state.cursor.x + gap : (innerWidth - width) / 2;
-    let top = state.cursor ? state.cursor.y + 36 : 12;
-    if (left + width > innerWidth - 8) left = state.cursor ? state.cursor.x - width - gap : innerWidth - width - 8;
-    if (top + height > innerHeight - 8) top = state.cursor ? state.cursor.y - height - gap : innerHeight - height - 8;
-    note.style.left = `${Math.max(8, Math.round(left))}px`;
-    note.style.top = `${Math.max(8, Math.round(top))}px`;
-    host.dataset['step'] = state.note.waiting ? state.note.text : '';
-  } else {
-    delete host.dataset['step'];
-  }
-}
-
-function readViewport(): string {
-  return `${innerWidth}x${innerHeight}`;
-}
-
-function readOrigin(): string {
-  return self.origin;
-}
-
-/**
- * Every frame element in the page — through open and closed shadow roots and
- * same-origin frames — with a stable id per element, so two listings can be
- * compared. Frames in the top document carry their box in viewport CSS pixels
- * (padded, so a mask covers borders and rounding); a frame inside a
- * same-origin frame carries `within`, the top-level frame that contains it.
- */
-function listFrames(): { viewport: { width: number; height: number }; frames: Array<{ id: number; x: number; y: number; w: number; h: number; readable: boolean; origin: string | null; within?: number }> } {
-  const holder = globalThis as unknown as { __valetFrameIds?: WeakMap<Element, number>; __valetFrameNext?: number };
-  const ids = (holder.__valetFrameIds ??= new WeakMap());
-  const dom = (globalThis as unknown as { chrome?: { dom?: { openOrClosedShadowRoot?(element: Element): ShadowRoot | null } } }).chrome?.dom;
-  const frames: Array<{ id: number; x: number; y: number; w: number; h: number; readable: boolean; origin: string | null; within?: number }> = [];
-  const rootsOf = (root: Document | ShadowRoot): Array<Document | ShadowRoot> => {
-    const roots: Array<Document | ShadowRoot> = [root];
-    for (const element of root.querySelectorAll('*')) {
-      let shadow: ShadowRoot | null = null;
-      try { shadow = dom?.openOrClosedShadowRoot?.(element) ?? element.shadowRoot; } catch { shadow = element.shadowRoot; }
-      if (shadow) roots.push(...rootsOf(shadow));
-    }
-    return roots;
-  };
-  const walk = (doc: Document, within: number | undefined, depth: number) => {
-    for (const root of rootsOf(doc)) {
-      for (const element of root.querySelectorAll('iframe, frame, object, embed')) {
-        let id = ids.get(element);
-        if (id === undefined) { id = (holder.__valetFrameNext = (holder.__valetFrameNext ?? 0) + 1); ids.set(element, id); }
-        let inner: Document | null = null;
-        try { inner = (element as HTMLIFrameElement).contentDocument ?? null; } catch { inner = null; }
-        const src = (element as HTMLIFrameElement).src || (element as HTMLObjectElement).data || '';
-        let origin: string | null = null;
-        try { origin = src ? new URL(src, doc.baseURI).origin : null; } catch { origin = null; }
-        if (origin === 'null') origin = null;
-        const box = element.getBoundingClientRect();
-        const readable = !!inner && depth < 5;
-        frames.push({ id, x: Math.floor(box.left) - 2, y: Math.floor(box.top) - 2, w: Math.ceil(box.width) + 4, h: Math.ceil(box.height) + 4, readable, origin,
-          ...(within !== undefined ? { within } : {}) });
-        if (readable) walk(inner!, within ?? id, depth + 1);
-      }
-    }
-  };
-  walk(document, undefined, 0);
-  return { viewport: { width: innerWidth, height: innerHeight }, frames };
-}
-
-function readReadyState(): string {
-  return document.readyState;
-}
-
-function readObservation(): FrameObservation | null {
-  const api = (globalThis as unknown as Record<string, { observe(): FrameObservation } | undefined>)['__valetPage'];
-  return api ? api.observe() : null;
-}
-
-function locateRef(ref: string, options: { focus?: boolean; clear?: boolean }): { ok: boolean; reason?: string; point?: { x: number; y: number } } {
-  const api = (globalThis as unknown as Record<string, { locate(ref: string, options: unknown): { ok: boolean; reason?: string; point?: { x: number; y: number } } } | undefined>)['__valetPage'];
-  return api ? api.locate(ref, options) : { ok: false, reason: 'The page was reloaded. Observe again.' };
-}
-
-function pointAtRef(x: number, y: number): { ok: boolean; reason?: string; ref?: string; role?: string; name?: string; href?: string; token?: string } {
-  const api = (globalThis as unknown as Record<string, { pointAt(x: number, y: number): { ok: boolean; reason?: string; ref?: string; role?: string; name?: string; href?: string; token?: string } } | undefined>)['__valetPage'];
-  return api ? api.pointAt(x, y) : { ok: false, reason: 'The page was reloaded. Observe again.' };
-}
-
-function tokenRef(): string | null {
-  const api = (globalThis as unknown as Record<string, { token(): string } | undefined>)['__valetPage'];
-  return api ? api.token() : null;
-}
-
-function frameOffsetRef(): { x: number; y: number } | null {
-  const api = (globalThis as unknown as Record<string, { frameOffset(): { x: number; y: number } | null } | undefined>)['__valetPage'];
-  return api ? api.frameOffset() : null;
-}
-
-function submitFactsRef(ref: string, via: 'click' | 'enter' | 'space'): { ok: boolean; reason?: string; submits?: boolean; fingerprint?: SubmitFingerprint } {
-  const api = (globalThis as unknown as Record<string, { submitFacts(ref: string, via: string): { ok: boolean; reason?: string; submits?: boolean; fingerprint?: SubmitFingerprint } } | undefined>)['__valetPage'];
-  return api ? api.submitFacts(ref, via) : { ok: false, reason: 'The page was reloaded. Observe again.' };
-}
-
-function chooseRef(ref: string, value: string): { ok: boolean; reason?: string } {
-  const api = (globalThis as unknown as Record<string, { choose(ref: string, value: string): { ok: boolean; reason?: string } } | undefined>)['__valetPage'];
-  return api ? api.choose(ref, value) : { ok: false, reason: 'The page was reloaded. Observe again.' };
-}
-
-function scrollPage(direction: 'up' | 'down'): void {
-  const api = (globalThis as unknown as Record<string, { scroll(direction: 'up' | 'down'): void } | undefined>)['__valetPage'];
-  api?.scroll(direction);
-}
-
-function scrollStep(top: number): void {
-  window.scrollBy({ top, behavior: 'instant' as ScrollBehavior });
-}
-
-function clickRef(ref: string, count = 1, button: 'left' | 'right' = 'left'): void {
-  const api = (globalThis as unknown as Record<string, { locate(ref: string, options: unknown): { ok: boolean } } | undefined>)['__valetPage'];
-  api?.locate(ref, {});
-  const holder = (globalThis as unknown as Record<string, { refs: Map<string, WeakRef<Element>> } | undefined>)['__valetPageRegistry'];
-  const element = holder?.refs.get(ref)?.deref() as HTMLElement | undefined;
-  if (!element) return;
-  // Without the debugger: the events a page listens for, in the order a mouse sends them.
-  const box = element.getBoundingClientRect();
-  const at = { bubbles: true, cancelable: true, composed: true, clientX: box.left + box.width / 2, clientY: box.top + box.height / 2, view: window };
-  if (button === 'right') {
-    element.dispatchEvent(new MouseEvent('mousedown', { ...at, button: 2, buttons: 2 }));
-    element.dispatchEvent(new MouseEvent('mouseup', { ...at, button: 2 }));
-    element.dispatchEvent(new MouseEvent('contextmenu', { ...at, button: 2 }));
-    return;
-  }
-  element.click();
-  if (count === 2) {
-    element.dispatchEvent(new MouseEvent('click', { ...at, detail: 2 }));
-    element.dispatchEvent(new MouseEvent('dblclick', { ...at, detail: 2 }));
-  }
-}
-
-function typeRef(ref: string, value: string): void {
-  const holder = (globalThis as unknown as Record<string, { refs: Map<string, WeakRef<Element>> } | undefined>)['__valetPageRegistry'];
-  const element = holder?.refs.get(ref)?.deref() as HTMLInputElement | undefined;
-  if (!element) return;
-  // The prototype's setter, so frameworks that track the value (React) see the change.
-  const proto = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-  if (setter) setter.call(element, value); else element.value = value;
-  element.dispatchEvent(new Event('input', { bubbles: true }));
-  element.dispatchEvent(new Event('change', { bubbles: true }));
-}
-
-/** Exported for its test only: it runs in the page, through executeScript. */
-export function pressRef(ref: string, key: string, code: string, keyCode: number): void {
-  const holder = (globalThis as unknown as Record<string, { refs: Map<string, WeakRef<Element>> } | undefined>)['__valetPageRegistry'];
-  const element = holder?.refs.get(ref)?.deref() as HTMLElement | undefined;
-  if (!element) return;
-  let handled = false;
-  for (const type of ['keydown', 'keypress', 'keyup']) {
-    const went = element.dispatchEvent(new KeyboardEvent(type, { key, code, keyCode, bubbles: true, cancelable: true } as KeyboardEventInit));
-    if (type === 'keydown' && !went) handled = true;
-  }
-  // Enter in a text field submits its form, as a real key press would (implicit submission), unless the page took
-  // the key — with the form's default button as the submitter, whose formaction/formmethod the approval was read from.
-  const submits = ['text', 'search', 'email', 'url', 'tel', 'password', 'number', 'date', 'time', 'datetime-local', 'month', 'week'];
-  if (key !== 'Enter' || handled || !(element instanceof HTMLInputElement) || !submits.includes(element.type) || !element.form) return;
-  const form = element.form;
-  const button = Array.from(form.elements).find((candidate) => {
-    const tag = candidate.tagName.toLowerCase();
-    const type = ((candidate as HTMLInputElement).type || '').toLowerCase();
-    return (tag === 'button' && (type === 'submit' || type === '')) || (tag === 'input' && (type === 'submit' || type === 'image'));
-  }) as HTMLButtonElement | HTMLInputElement | undefined;
-  try { form.requestSubmit(button); } catch { form.requestSubmit(); }
-}
-
-function hoverRef(ref: string): void {
-  const holder = (globalThis as unknown as Record<string, { refs: Map<string, WeakRef<Element>> } | undefined>)['__valetPageRegistry'];
-  const element = holder?.refs.get(ref)?.deref() as HTMLElement | undefined;
-  if (!element) return;
-  for (const type of ['pointerover', 'pointerenter', 'mouseover', 'mouseenter', 'pointermove', 'mousemove']) {
-    element.dispatchEvent(new MouseEvent(type, { bubbles: !type.endsWith('enter'), cancelable: true }));
-  }
-}
