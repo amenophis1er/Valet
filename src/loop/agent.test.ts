@@ -22,7 +22,7 @@ function page(): ExecutorObservation {
 
 type Turn = (request: AIChatRequest, signal: AbortSignal) => Promise<AIChatResult> | AIChatResult;
 
-function harness(turns: Turn[], options: { saved?: Persisted; connection?: Connection | null; failNext?: Error[]; /** A fill fails once dispatch has begun: its outcome is unknown. */ failDispatched?: Error; scoped?: boolean; mode?: 'ask' | 'auto'; blockedAfter?: string; captureOrigin?: string; skills?: Skill[]; learning?: boolean; now?: () => number } = {}) {
+function harness(turns: Turn[], options: { saved?: Persisted; connection?: Connection | null; failNext?: Error[]; /** A fill fails once dispatch has begun: its outcome is unknown. */ failDispatched?: Error; scoped?: boolean; mode?: 'ask' | 'auto'; blockedAfter?: string; captureOrigin?: string; skills?: Skill[]; learning?: boolean; now?: () => number; /** skills.get waits for this: a run held in starting. */ skillsHeld?: Promise<void> } = {}) {
   const ran: Command[] = [];
   const requests: AIChatRequest[] = [];
   const failNext = options.failNext ?? [];

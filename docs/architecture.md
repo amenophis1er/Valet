@@ -41,7 +41,7 @@ flowchart LR
 | Layer | Owns | Does not |
 | --- | --- | --- |
 | **Panel** (`panel.ts`) | Rendering the conversation, the composer, approval cards; sending the owner's intents. | Run any agent logic. It is a view over state the worker pushes. |
-| **Agent loop** (`loop/agent.ts`) | One run: goal → model turn → tool calls in order → results back, until the model answers. Budgets, Stop, persistence, Learn's step-by-step, the owner's approvals for the conversation. | Touch the browser. Every tool call goes to the controller. |
+| **Agent loop** (`loop/agent.ts`) | One run: goal → model turn → tool calls in order → results back, until the model answers. Budgets, Stop, persistence and restart recovery. Its states are an explicit machine (`lifecycle.ts`); its other concerns are parts behind a narrow host (`host.ts`): the owner's approvals (`approvals.ts`), screenshots and files (`media.ts`), skills (`skill-notes.ts`) and Learn (`learn.ts`). | Touch the browser. Every tool call goes to the controller. |
 | **Action registry** (`actions/`) | The browser tool's contract: one spec per action — its fields, rules, safety facts, guidance for the model, and wording for the owner. The validator, the JSON Schema, the tool description and the step wording are generated from it. | Decide anything. Specs describe; the controller enforces. |
 | **Run controller** (`controller/controller.ts`) | The one door every action goes through, in a fixed order (below). Classifying every failure by whether anything was dispatched. | Know how Chrome is driven. |
 | **Executor** (`executor/commands.ts`) | Sessions and tabs, observation, screenshots, the debugger, persistence across worker restarts. | Decide whether an action may run. |
