@@ -17,7 +17,7 @@ import { BrowserCommands, type Pace } from './executor/commands.js';
 import { AgentLoop, type Persisted } from './loop/agent.js';
 import { AI_PREFIX, LEARNING_KEY, MAIN_CONVERSATION, MEDIA_PREFIX, MODE_KEY, PACE_KEY, conversationForTab, conversationOfPort, panelPath, tabOfConversation, type PanelIntent, type WorkerMessage } from './loop/protocol.js';
 import { agentPanelPaths, panelAssignments } from './panels.js';
-import { printToPdf } from './pdf.js';
+import { printToPdf, type PdfChrome } from './pdf.js';
 import { installProviderRules } from './scope/provider-rules.js';
 import { Containment, type DnrLike } from './scope/containment.js';
 import { originOf } from './scope/scope.js';
@@ -37,6 +37,8 @@ declare const chrome: WorkerChrome & {
     setOptions(options: { tabId?: number; path?: string; enabled?: boolean }): Promise<void>;
     getOptions(options: { tabId?: number }): Promise<{ tabId?: number; path?: string; enabled?: boolean }>;
   };
+  /** Only for printing a PDF in a window of its own (pdf.ts). */
+  windows: PdfChrome['windows'];
   tabs: {
     onCreated: { addListener(listener: (tab: { id?: number; openerTabId?: number }) => void): void };
     onRemoved: { addListener(listener: (tabId: number) => void): void };

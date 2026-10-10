@@ -362,7 +362,7 @@ test('takes a screenshot with the unapproved frame painted over, and makes a fil
   await panel.close();
 });
 
-test('makes a PDF: Chrome prints the agent\'s Markdown in a tab of its own, and the download is a real PDF', async () => {
+test('makes a PDF: Chrome prints the agent\'s Markdown in a window of its own, and the download is a real PDF', async () => {
   model.script([
     () => ({ tool: 'save_file', call: { filename: 'shop-report.pdf', content: '# Shop report\n\n## Prices\n\n| Item | Price |\n| --- | --- |\n| Blue mug | $12.40 |\n\nNotes — café, 日本語, 🙂.' } }),
     () => ({ text: 'Here is your report.' }),
@@ -372,7 +372,7 @@ test('makes a PDF: Chrome prints the agent\'s Markdown in a tab of its own, and 
   // The model was told the PDF was made, not that it fell back to Markdown.
   const answer = model.requests.at(-1)!.messages.find((message) => message.role === 'tool')!;
   expect(String(answer.content)).toContain('"saved":"shop-report.pdf"');
-  // The tab Chrome printed in is closed again.
+  // The window Chrome printed in is closed again.
   expect(context.pages().map((page) => page.url()).filter((url) => url.includes('document.html'))).toEqual([]);
   await expect(panel.locator('.file .name')).toContainText('shop-report.pdf');
   const [download] = await Promise.all([panel.waitForEvent('download'), panel.locator('.file').getByRole('button', { name: 'Download' }).click()]);

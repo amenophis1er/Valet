@@ -1,4 +1,4 @@
-/** Chrome prints one of the extension's pages: the tab and the debugger never outlive the call. */
+/** Chrome prints one of the extension's pages: the window and the debugger never outlive the call. */
 import { describe, expect, it } from 'vitest';
 import { printToPdf, type PdfChrome } from './pdf.js';
 
@@ -9,11 +9,17 @@ function fakeChrome(options: { state?: string; attachError?: string; printError?
   let url = '';
   let polls = 0;
   const chrome: PdfChrome = {
+    windows: {
+      async create(properties) {
+        calls.push(`window ${properties.url} focused=${properties.focused} ${properties.state}`);
+        open.add(3); url = properties.url;
+        return { id: 3, tabs: [{ id: 7 }] };
+      },
+      async remove(windowId) { calls.push(`close window ${windowId}`); open.delete(windowId); },
+    },
     tabs: {
-      async create(properties) { calls.push(`create ${properties.url} active=${properties.active}`); open.add(7); url = properties.url; return { id: 7 }; },
       // Loading for the first two looks: the initial blank page, then the document.
       async get(tabId) { polls += 1; if (polls === 1) calls.push(`get ${tabId}`); return polls < 3 || options.neverLoads ? { url: 'about:blank', status: 'loading' } : { url, status: 'complete' }; },
-      async remove(ids) { calls.push(`remove ${ids.join(',')}`); for (const id of ids) open.delete(id); },
     },
     debugger: {
       async attach(target, version) { if (options.attachError) throw new Error(options.attachError); calls.push(`attach ${target.tabId} ${version}`); attached = target.tabId; },
@@ -39,18 +45,18 @@ function fakeChrome(options: { state?: string; attachError?: string; printError?
 }
 
 describe('printToPdf', () => {
-  it('opens the page in a background tab, waits for it to say it is ready, prints, and closes everything', async () => {
+  it('opens the page in a minimized, unfocused window of its own, waits for it to say it is ready, prints, and closes everything', async () => {
     const f = fakeChrome();
     expect(await printToPdf(f.chrome, 'chrome-extension://x/document.html?id=file-1')).toBe('JVBERi0=');
     expect(f.calls).toEqual([
-      'create chrome-extension://x/document.html?id=file-1 active=false', 'get 7',
-      'attach 7 1.3', 'Runtime.evaluate 7', 'Page.printToPDF 7', 'detach 7', 'remove 7',
+      'window chrome-extension://x/document.html?id=file-1 focused=false minimized', 'get 7',
+      'attach 7 1.3', 'Runtime.evaluate 7', 'Page.printToPDF 7', 'detach 7', 'close window 3',
     ]);
     expect(f.open.size).toBe(0);
     expect(f.attached()).toBeUndefined();
   });
 
-  it('fails, and still closes the tab, when the attach is refused, the document is gone, or printing fails', async () => {
+  it('fails, and still closes the window, when the attach is refused, the document is gone, or printing fails', async () => {
     for (const [options, message] of [
       [{ attachError: 'Cannot attach to this target' }, /Cannot attach/],
       [{ state: 'gone' }, /no longer stored/],
@@ -59,7 +65,7 @@ describe('printToPdf', () => {
       const f = fakeChrome(options);
       await expect(printToPdf(f.chrome, 'chrome-extension://x/document.html?id=file-1')).rejects.toThrow(message);
       expect(f.open.size).toBe(0);
-      expect(f.calls.at(-1)).toBe('remove 7');
+      expect(f.calls.at(-1)).toBe('close window 3');
     }
   });
 

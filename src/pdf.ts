@@ -2,17 +2,23 @@
  * A PDF from one of the extension's own pages, made by Chrome itself.
  *
  * The worker has no DOM and the extension bundles no PDF library: it opens
- * document.html in a background tab, attaches the debugger it already holds
- * the permission for, asks Chrome to print the page to PDF, and closes the
- * tab. Chrome's layout engine does the typesetting, with the system's fonts,
- * so anything the page can show ends up in the PDF.
+ * document.html in a window of its own, minimized and unfocused, attaches the
+ * debugger it already holds the permission for, asks Chrome to print the page
+ * to PDF, and closes the window. Chrome's layout engine does the typesetting,
+ * with the system's fonts, so anything the page can show ends up in the PDF.
+ *
+ * A window of its own, not a background tab in the owner's window: a tab
+ * opened and closed beside the conversation's tab closed the open side panel
+ * (the panel is per tab). Nothing happens in the owner's windows.
  */
 
 export interface PdfChrome {
+  windows: {
+    create(properties: { url: string; focused: boolean; state: 'minimized' }): Promise<{ id?: number; tabs?: Array<{ id?: number }> }>;
+    remove(windowId: number): Promise<void>;
+  };
   tabs: {
-    create(properties: { url: string; active?: boolean }): Promise<{ id?: number }>;
     get(tabId: number): Promise<{ url?: string; status?: string }>;
-    remove(tabIds: number[]): Promise<void>;
   };
   debugger: {
     attach(target: { tabId: number }, version: string): Promise<void>;
@@ -39,13 +45,16 @@ const READY = `new Promise((resolve, reject) => {
 })`;
 
 /**
- * The PDF of `url` (one of this extension's pages), as base64. The tab is
+ * The PDF of `url` (one of this extension's pages), as base64. The window is
  * closed and the debugger released whatever happens.
  */
 export async function printToPdf(chrome: PdfChrome, url: string, timeoutMs = PRINT_TIMEOUT_MS): Promise<string> {
-  const tab = await chrome.tabs.create({ url, active: false });
-  const tabId = tab.id;
-  if (tabId === undefined) throw new Error('Chrome did not open the document.');
+  const window = await chrome.windows.create({ url, focused: false, state: 'minimized' });
+  const tabId = window.tabs?.[0]?.id;
+  if (tabId === undefined) {
+    if (window.id !== undefined) await chrome.windows.remove(window.id).catch(() => undefined);
+    throw new Error('Chrome did not open the document.');
+  }
   let timer: ReturnType<typeof setTimeout> | undefined;
   const expiry = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Making the PDF took too long.')), timeoutMs); });
   try {
@@ -53,7 +62,7 @@ export async function printToPdf(chrome: PdfChrome, url: string, timeoutMs = PRI
   } finally {
     clearTimeout(timer);
     await chrome.debugger.detach({ tabId }).catch(() => undefined);
-    await chrome.tabs.remove([tabId]).catch(() => undefined);
+    if (window.id !== undefined) await chrome.windows.remove(window.id).catch(() => undefined);
   }
 }
 
