@@ -22,6 +22,7 @@ function connectionsMarkup(): string {
           <span aria-hidden="true">+</span> Add a connection
         </button>
         <div id="add-form" class="add-form" hidden>
+          <p class="add-heading">Add a connection</p>
           <label>Provider
             <select id="provider">
               <optgroup label="Sign in with a subscription">
@@ -49,13 +50,23 @@ function connectionsMarkup(): string {
             <input id="claude-code" placeholder="Paste the code from claude.com" autocomplete="off" aria-label="Code from claude.com">
             <button id="claude-done" class="primary">Finish</button>
           </div>
-          <p id="chatgpt-code" class="signin-code" hidden></p>
-          <div class="row">
-            <button id="connect" class="primary">Connect</button>
-            <button id="add-cancel" class="ghost">Cancel</button>
+          <div id="chatgpt-box" class="signin-code" hidden>
+            <span id="chatgpt-code"></span>
+            <button id="chatgpt-copy" class="icon" type="button" aria-label="Copy the code" title="Copy the code"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2" /><path d="M15.5 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2h2.5" /></svg></button>
           </div>
           <p id="settings-status" class="muted status-line" role="status"></p>
+          <div class="row">
+            <button id="connect" class="primary">Connect</button>
+            <button id="add-cancel">Cancel</button>
+          </div>
         </div>`;
+}
+
+/** The form's status line, with a spinner while it waits on the owner somewhere else. */
+function setStatus(text: string, waiting = false): void {
+  const line = $('settings-status');
+  line.textContent = text;
+  line.classList.toggle('waiting', waiting && !!text);
 }
 
 /** Fill the sheet and wire it. `onChange` is told whenever the active connection or its model may have changed. */
@@ -67,6 +78,11 @@ export function setupConnections(options: { ai: AiClient; onChange?: () => void;
   $('provider').onchange = renderProvider;
   $('add-toggle').onclick = () => openAddForm(true);
   $('add-cancel').onclick = () => openAddForm(false);
+  $('chatgpt-copy').onclick = async () => {
+    const copied = await navigator.clipboard.writeText($('chatgpt-code').textContent ?? '').then(() => true, () => false);
+    $('chatgpt-copy').setAttribute('aria-label', copied ? 'Copied' : 'Could not copy');
+    setTimeout(() => $('chatgpt-copy').setAttribute('aria-label', 'Copy the code'), 1500);
+  };
   $('connect').onclick = () => { void addConnection(); };
   renderProvider();
   return { render: renderConnections, openAddForm };
@@ -162,94 +178,90 @@ function renderProvider(): void {
   $('claude-hint').hidden = provider !== 'claude-sub';
   $('chatgpt-hint').hidden = provider !== 'chatgpt-sub';
   $('claude-finish').hidden = true;
-  $('chatgpt-code').hidden = true;
-  $('settings-status').textContent = '';
+  $('chatgpt-box').hidden = true;
+  setStatus('');
   $('connect').textContent = SIGN_IN[provider] ?? 'Connect';
 }
 
 /** Claude Pro/Max: approve on claude.com (the library opens it), then paste the code it shows. */
 async function signInClaude(): Promise<void> {
-  const status = $('settings-status');
   const start = await ai.anthropicLoginStart();
-  if (!start.ok) { status.textContent = start.error ?? 'Could not start the sign-in.'; return; }
-  status.textContent = 'Approve on claude.com, then paste the code here.';
+  if (!start.ok) { setStatus(start.error ?? 'Could not start the sign-in.'); return; }
+  setStatus('Approve on claude.com, then paste the code here.');
   $('claude-finish').hidden = false;
   $<HTMLInputElement>('claude-code').value = '';
   $('claude-code').focus();
   $('claude-done').onclick = async () => {
     const pasted = $<HTMLInputElement>('claude-code').value.trim();
-    if (!pasted) { status.textContent = 'Paste the code from claude.com first.'; return; }
-    status.textContent = 'Finishing…';
+    if (!pasted) { setStatus('Paste the code from claude.com first.'); return; }
+    setStatus('Finishing…', true);
     const done = await ai.anthropicLoginComplete({ pasted, label: 'Claude (Pro/Max)' });
-    if (!done.ok) { status.textContent = done.error ?? 'Sign-in failed.'; return; }
+    if (!done.ok) { setStatus(done.error ?? 'Sign-in failed.'); return; }
     $('claude-finish').hidden = true;
-    status.textContent = ''; openAddForm(false); flash('Connected. Pick its model in the list.');
+    setStatus(''); openAddForm(false); flash('Connected. Pick its model in the list.');
     await renderConnections();
   };
 }
 
 /** ChatGPT Plus/Pro: a code the owner enters on openai.com (the library opens it), then wait. */
 async function signInChatgpt(): Promise<void> {
-  const status = $('settings-status');
   const start = await ai.chatgptLoginStart();
-  if (!start.ok || !start.data) { status.textContent = start.error ?? 'Could not start the sign-in.'; return; }
-  const code = $('chatgpt-code');
-  code.textContent = start.data.userCode;
+  if (!start.ok || !start.data) { setStatus(start.error ?? 'Could not start the sign-in.'); return; }
+  const code = $('chatgpt-box');
+  $('chatgpt-code').textContent = start.data.userCode;
   code.hidden = false;
-  status.textContent = 'Enter this code on the openai.com page that just opened. Waiting…';
+  setStatus('Waiting for you to enter the code on openai.com…', true);
   const deadline = Date.now() + 15 * 60_000;
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 5_000));
     const poll = await ai.chatgptLoginPoll('ChatGPT (Plus/Pro)');
-    if (!poll.ok) { status.textContent = poll.error ?? 'Sign-in failed.'; code.hidden = true; return; }
+    if (!poll.ok) { setStatus(poll.error ?? 'Sign-in failed.'); code.hidden = true; return; }
     if (poll.data?.status === 'created') {
       code.hidden = true;
-      status.textContent = ''; openAddForm(false); flash('Connected. Pick its model in the list.');
+      setStatus(''); openAddForm(false); flash('Connected. Pick its model in the list.');
       await renderConnections();
       return;
     }
   }
   code.hidden = true;
-  status.textContent = 'The code expired. Start the sign-in again.';
+  setStatus('The code expired. Start the sign-in again.');
 }
 
 async function addConnection(): Promise<void> {
-  const status = $('settings-status');
   const provider = $<HTMLSelectElement>('provider').value;
   if (provider === 'claude-sub') return signInClaude();
   if (provider === 'chatgpt-sub') return signInChatgpt();
   if (provider === 'ollama-cloud') {
-    status.textContent = 'Waiting for you to click Connect on ollama.com…';
+    setStatus('Waiting for you to click Connect on ollama.com…', true);
     const start = await ai.ollamaLoginStart('Valet (Chrome)');
-    if (!start.ok || !start.data) { status.textContent = start.error ?? 'Could not start the sign-in.'; return; }
+    if (!start.ok || !start.data) { setStatus(start.error ?? 'Could not start the sign-in.'); return; }
     for (;;) {
       await new Promise((resolve) => setTimeout(resolve, start.data!.pollMs));
       const poll = await ai.ollamaLoginPoll('');
-      if (!poll.ok) { status.textContent = poll.error ?? 'Sign-in failed.'; return; }
+      if (!poll.ok) { setStatus(poll.error ?? 'Sign-in failed.'); return; }
       if (poll.data?.status === 'created') break;
     }
-    status.textContent = ''; openAddForm(false); flash('Connected. Pick its model in the list.');
+    setStatus(''); openAddForm(false); flash('Connected. Pick its model in the list.');
     await renderConnections();
     return;
   }
   const spec = PROVIDERS[provider]!;
   const base = provider === 'custom' ? $<HTMLInputElement>('base').value.trim() : spec.base ?? '';
   const key = $<HTMLInputElement>('key').value.trim();
-  if (spec.key && provider !== 'custom' && !key) { status.textContent = 'Enter the API key.'; return; }
+  if (spec.key && provider !== 'custom' && !key) { setStatus('Enter the API key.'); return; }
   const saved = await ai.saveConnection({ kind: spec.kind, label: spec.label, baseUrl: base, model: '', apiKeyMode: key ? 'set' : 'keep', apiKey: key, makeActive: true });
   $<HTMLInputElement>('key').value = '';
-  if (saved.ok) { openAddForm(false); flash('Connected. Pick its model in the list.'); } else status.textContent = saved.error ?? 'Could not save.';
+  if (saved.ok) { openAddForm(false); flash('Connected. Pick its model in the list.'); } else setStatus(saved.error ?? 'Could not save.');
   await renderConnections();
 }
 
 /** A one-line confirmation under the models list, gone after a few seconds. */
 function flash(text: string): void {
-  const status = $('settings-status');
   $('add-form').hidden = true;
   const note = document.getElementById('models-note') ?? Object.assign(document.createElement('p'), { id: 'models-note', className: 'muted status-line' });
   $('add-toggle').after(note);
   note.textContent = text;
-  status.textContent = text;
+  setStatus(text);
   setTimeout(() => { if (note.textContent === text) note.textContent = ''; }, 5000);
   // A new connection is the active one: whoever shows it should know.
   onChange();

@@ -100,6 +100,7 @@ input[type=checkbox] { width: auto; height: auto; }
 #connection .conn { color: var(--v-text-muted); }
 #connection b { font-weight: 600; }
 .model.none #connection { color: var(--v-text-muted); }
+#open-settings[aria-pressed="true"] { background: var(--v-accent-soft); color: var(--v-accent-text); }
 
 /* ---- Views ---- */
 .view { flex: 1; display: flex; flex-direction: column; min-height: 0; }
@@ -385,8 +386,13 @@ button.stop:hover { background: var(--v-danger-soft); }
 .connections select { width: auto; min-width: 180px; max-width: 100%; height: 32px; font-size: var(--v-fs-sm); border-radius: var(--v-radius-sm); }
 .connections .empty-row { display: block; cursor: default; color: var(--v-text-muted); font-size: var(--v-fs-sm); }
 .connections .empty-row:hover { background: none; }
-/* The code the owner types on openai.com. */
-.signin-code { margin: 0; padding: 12px 16px; border-radius: var(--v-radius-lg); border: 1px solid var(--v-line); background: var(--v-surface-raised); font-family: var(--v-font-mono); font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: .12em; font-variant-numeric: tabular-nums; user-select: all; }
+/* The code the owner types on openai.com, with Copy beside it. */
+.signin-code { display: flex; align-items: center; gap: 10px; margin: 0; padding: 12px 10px 12px 16px; border-radius: var(--v-radius-lg); border: 1px solid var(--v-line); background: var(--v-surface-raised); }
+#chatgpt-code { flex: 1; min-width: 0; font-family: var(--v-font-mono); font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: .12em; font-variant-numeric: tabular-nums; user-select: all; }
+.add-heading { margin: 0; font-size: var(--v-fs-md); line-height: var(--v-lh-md); font-weight: 600; }
+/* Waiting on the owner somewhere else (a sign-in page): a spinner before the line. */
+.status-line.waiting { display: flex; align-items: center; gap: 8px; }
+.status-line.waiting::before { content: ""; width: 14px; height: 14px; flex: none; border-radius: 50%; border: 2px solid var(--v-accent-line); border-top-color: var(--v-accent); animation: v-spin var(--v-spin-period) linear infinite; }
 
 /* Skills. */
 .skills li { display: flex; gap: 12px; align-items: center; min-height: 56px; padding: 8px 8px 8px 14px; }
@@ -428,7 +434,7 @@ button.stop:hover { background: var(--v-danger-soft); }
 @keyframes v-rise { from { opacity: 0; transform: translateY(6px); } }
 @keyframes v-fade { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .spinner { animation: v-breathe 1600ms ease-in-out infinite; border-color: var(--v-accent); }
+  .spinner, .status-line.waiting::before { animation: v-breathe 1600ms ease-in-out infinite; border-color: var(--v-accent); }
   .dots i { animation: none; opacity: .55; }
   #mic[aria-pressed="true"] { animation: none; box-shadow: 0 0 0 2px var(--v-danger-line); }
   .menu, .card, .step-bar, .lightbox[open] { animation-name: v-fade; }

@@ -924,6 +924,7 @@ async function renderPace(): Promise<void> {
 }
 
 function showSettings(open: boolean): void {
+  $('open-settings').setAttribute('aria-pressed', String(open));
   $('settings-view').hidden = !open;
   $('chat-view').hidden = open;
   if (open) { void connections.render(); void renderPace(); void renderSkills(); }
