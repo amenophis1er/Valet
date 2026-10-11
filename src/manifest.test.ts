@@ -47,6 +47,8 @@ describe('the built extension', () => {
     for (const absent of ['activeTab', 'alarms', 'offscreen']) expect(manifest['permissions']).not.toContain(absent);
     expect(manifest['host_permissions']).toEqual(['http://*/*', 'https://*/*']);
     expect(String(manifest['description'])).toMatch(/access to every site because it works on the ones you ask/);
+    // The Chrome Web Store refuses a package whose description is longer.
+    expect(String(manifest['description']).length).toBeLessThanOrEqual(132);
   });
 
   /*

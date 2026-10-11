@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Valet",
   "version": "0.0.0",
-  "description": "An AI agent that works in your own Chrome, with the model you bring. It needs access to every site because it works on the ones you ask it to, and asks before going anywhere new.",
+  "description": "An AI agent in your Chrome, with the model you bring. It needs access to every site because it works on the ones you ask it to.",
   "minimum_chrome_version": "116",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArn+bLv4zZ1ad0mEsHKNqGqP7ZyogOB5PY1ztKIFvmISO7RJn8eprM5C/dhUQHnWL13mF3R+Az+3fIPpVJHjgZh8wKAPNPR9b9VXQ0mQYmWg1x4EuwMsd6HhA5M7x18500Ohu6V7Ki5bkDEevh7N9/MeIG06bmSZFJaQ8PyuMstZZWliVy5lburyTnokew2Ndxyciri2gRWzhxe13GvT1H6YzHOl3FIn1cJcRt6XQTkHocvd7Fy2ehj41mfpYEqfZy/Zew0ESMf1KkkFmvBvJXpbXwMTHohYDJA+leP8dI8jYOjSAOyU7FNNLGKiFaOLBVAiTLQXoQitNVZBZBA+zWwIDAQAB",
   "permissions": ["tabs", "tabGroups", "scripting", "debugger", "storage", "sidePanel", "declarativeNetRequest", "webNavigation"],
