@@ -39,7 +39,7 @@
     "docs": "vitest run src/actions/reference.test.ts -u"
   },
   "dependencies": {
-    "@amenophis1er/byok": "^0.1.1",
+    "@amenophis1er/byok": "^0.1.2",
     "zod": "^4.6.5"
   },
   "devDependencies": {
