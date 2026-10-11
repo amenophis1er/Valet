@@ -7,7 +7,7 @@
  */
 
 import type { AiClient } from '@amenophis1er/byok/client';
-import type { ConnectionView } from '@amenophis1er/byok/types';
+import { OPENAI_COMPATIBLE_PRESETS, type ConnectionView } from '@amenophis1er/byok/types';
 import { iconButton, TRASH } from './ui.js';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -30,10 +30,8 @@ function connectionsMarkup(): string {
                 <option value="chatgpt-sub">ChatGPT Plus/Pro</option>
                 <option value="ollama-cloud">Ollama Cloud</option>
               </optgroup>
-              <optgroup label="Use an API key">
+              <optgroup id="key-providers" label="Use an API key">
                 <option value="anthropic">Anthropic</option>
-                <option value="openai">OpenAI</option>
-                <option value="openrouter">OpenRouter</option>
               </optgroup>
               <optgroup label="Run it yourself">
                 <option value="ollama-local">Ollama on this computer</option>
@@ -75,6 +73,7 @@ export function setupConnections(options: { ai: AiClient; onChange?: () => void;
   onChange = options.onChange ?? (() => undefined);
   const container = options.container ?? $('connections-sheet');
   container.innerHTML = connectionsMarkup();
+  for (const [value, spec] of Object.entries(PROVIDERS)) if (spec.preset) $('key-providers').append(new Option(spec.label, value));
   $('provider').onchange = renderProvider;
   $('add-toggle').onclick = () => openAddForm(true);
   $('add-cancel').onclick = () => openAddForm(false);
@@ -88,10 +87,21 @@ export function setupConnections(options: { ai: AiClient; onChange?: () => void;
   return { render: renderConnections, openAddForm };
 }
 
-const PROVIDERS: Record<string, { kind: 'anthropic' | 'openai-compatible'; base?: string; key: boolean; label: string }> = {
+type Provider = { kind: 'anthropic' | 'openai-compatible'; base?: string; key: boolean; label: string; preset?: true };
+
+/**
+ * The API-key providers after Anthropic are the library's OpenAI-compatible
+ * presets, so a provider byok adds shows up here with the next update. Its
+ * Ollama presets are left out: Ollama has entries of its own (a sign-in, and
+ * this computer).
+ */
+const KEY_PRESETS: Record<string, Provider> = Object.fromEntries(OPENAI_COMPATIBLE_PRESETS
+  .filter((preset) => !preset.label.startsWith('Ollama'))
+  .map((preset) => [preset.label.toLowerCase().replace(/[^a-z0-9]+/g, '-'), { kind: 'openai-compatible', base: preset.baseUrl, key: true, label: preset.label, preset: true }]));
+
+const PROVIDERS: Record<string, Provider> = {
   anthropic: { kind: 'anthropic', key: true, label: 'Anthropic' },
-  openai: { kind: 'openai-compatible', base: 'https://api.openai.com', key: true, label: 'OpenAI' },
-  openrouter: { kind: 'openai-compatible', base: 'https://openrouter.ai/api', key: true, label: 'OpenRouter' },
+  ...KEY_PRESETS,
   'ollama-local': { kind: 'openai-compatible', base: 'http://localhost:11434', key: false, label: 'Ollama (local)' },
   custom: { kind: 'openai-compatible', key: true, label: '' },
 };
@@ -173,7 +183,12 @@ function renderProvider(): void {
   const provider = $<HTMLSelectElement>('provider').value;
   const spec = PROVIDERS[provider];
   $('key-row').hidden = provider in SIGN_IN || spec?.key === false;
-  $('base-row').hidden = provider !== 'custom';
+  // A preset whose URL names the owner's account ({account_id}…) is filled in, for them to complete.
+  const template = spec?.base?.includes('{') ? spec.base : '';
+  const base = $<HTMLInputElement>('base');
+  if (template) base.value = template;
+  else if (base.value.includes('{')) base.value = '';
+  $('base-row').hidden = provider !== 'custom' && !template;
   $('ollama-hint').hidden = provider !== 'ollama-cloud';
   $('claude-hint').hidden = provider !== 'claude-sub';
   $('chatgpt-hint').hidden = provider !== 'chatgpt-sub';
@@ -246,7 +261,10 @@ async function addConnection(): Promise<void> {
     return;
   }
   const spec = PROVIDERS[provider]!;
-  const base = provider === 'custom' ? $<HTMLInputElement>('base').value.trim() : spec.base ?? '';
+  const typed = provider === 'custom' || spec.base?.includes('{');
+  const base = typed ? $<HTMLInputElement>('base').value.trim() : spec.base ?? '';
+  const missing = base.match(/\{[^}]+\}/)?.[0];
+  if (missing) { setStatus(`Replace ${missing} in the server URL with yours.`); return; }
   const key = $<HTMLInputElement>('key').value.trim();
   if (spec.key && provider !== 'custom' && !key) { setStatus('Enter the API key.'); return; }
   const saved = await ai.saveConnection({ kind: spec.kind, label: spec.label, baseUrl: base, model: '', apiKeyMode: key ? 'set' : 'keep', apiKey: key, makeActive: true });

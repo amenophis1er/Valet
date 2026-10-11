@@ -24,8 +24,9 @@ companion app.
   sends data still asks. Approvals are not remembered after
   the conversation; only the Ask/Auto choice carries over.
 - **Any model.** Sign in with your **Claude Pro/Max** or **ChatGPT
-  Plus/Pro** subscription, or use an API key for Anthropic, OpenAI or
-  OpenRouter, Ollama Cloud (sign in, no key), Ollama on your machine, or any
+  Plus/Pro** subscription, or use an API key for Anthropic, OpenAI, Google
+  Gemini, xAI, Mistral, Groq, DeepSeek, OpenRouter, Cloudflare and more;
+  Ollama Cloud (sign in, no key), Ollama on your machine, or any
   OpenAI-compatible server. Keys and sign-ins stay encrypted in the extension.
 
 > **Status:** early and unpacked-only. It works day to day, but expect rough
