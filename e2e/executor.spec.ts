@@ -52,7 +52,7 @@ const run = (session: string, input: unknown): Promise<Result> =>
 test('loads unpacked with its fixed id, and the worker starts without errors', async () => {
   expect(new URL(worker.url()).host).toBe(EXTENSION_ID);
   const manifest = await worker.evaluate(() => (globalThis as any).chrome.runtime.getManifest());
-  expect(manifest.name).toBe('Valet');
+  expect(manifest.short_name).toBe('Valet');
   expect(logs.filter((line) => /error/i.test(line))).toEqual([]);
 });
 

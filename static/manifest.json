@@ -1,6 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Valet",
+  "name": "Valet — AI Browser Agent & Web Automation",
+  "short_name": "Valet",
   "version": "0.0.0",
   "description": "An AI agent in your Chrome, with the model you bring. It needs access to every site because it works on the ones you ask it to.",
   "minimum_chrome_version": "116",
