@@ -33,7 +33,10 @@ describe('the built extension', () => {
     const pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
     expect(manifest['manifest_version']).toBe(3);
     expect(manifest['version']).toBe(pkg.version);
-    expect(manifest['name']).toBe('Valet');
+    // The store's title: the brand, then what people search for. 75 characters at most; Chrome shows `short_name` where space is short.
+    expect(String(manifest['name'])).toMatch(/^Valet — /);
+    expect(String(manifest['name']).length).toBeLessThanOrEqual(75);
+    expect(manifest['short_name']).toBe('Valet');
     expect(manifest['minimum_chrome_version']).toBe('116');
   });
 
