@@ -995,7 +995,7 @@ describe('Learning: one step at a time', () => {
     expect(h.notes.at(-1)).toBeNull();
   });
 
-  it('Learning turned off mid-run lets the step go and takes the bubble out of the page before the next action', async () => {
+  it('Learning turned off mid-run lets the step go and takes the bubble out of the page at once', async () => {
     let h: ReturnType<typeof harness>;
     h = harness([
       callTurn({ id: 'a', args: { action: 'navigate', url: 'https://shop.test/' } }),
@@ -1007,9 +1007,11 @@ describe('Learning: one step at a time', () => {
     await tick();
     expect(h.notes.at(-1)).toMatchObject({ waiting: true });
     await h.loop.setLearning(false);
+    // Gone as Learn goes off, with no "doing it" bubble left behind.
+    expect(h.notes.at(-1)).toBeNull();
     await running;
     expect(h.ran.map((command) => command.name)).toEqual(['navigate', 'click']);
-    expect(h.notes.slice(0, 3)).toEqual([expect.objectContaining({ waiting: true }), expect.objectContaining({ waiting: false }), null]);
+    expect(h.notes.some((note) => note?.waiting === false)).toBe(false);
     expect(h.loop.state.transcript.at(-1)).toMatchObject({ kind: 'agent', text: 'Clean.' });
   });
 
