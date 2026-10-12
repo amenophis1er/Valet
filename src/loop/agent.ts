@@ -243,6 +243,8 @@ export class AgentLoop {
     this.#state.approval = undefined;
     this.#state.stepWait = undefined;
     this.#state.question = undefined;
+    // A step that was going when the worker died never came back: its outcome is not known.
+    for (const entry of this.#state.transcript) if (entry.kind === 'action' && entry.outcome === 'pending') entry.outcome = 'unknown';
     if (saved.status !== 'running') return;
     this.#answerDangling('The extension restarted while this action was running. Its outcome is unknown. Observe before acting and do not repeat a submission.');
     this.#life.to('paused');
@@ -591,6 +593,15 @@ export class AgentLoop {
       const targets = [...this.#deps.controller.latestTargets];
       await this.#learn.before(call.args ?? {}, targets, why);
       if (this.#life.stopRequested) this.#cancel.cancel();
+      // Shown as it starts: the page changes long before the step's result is back (it waits for the page and reads it again).
+      const started: TranscriptEntry = { kind: 'action', text: describeStep(call.args, targets, false), outcome: 'pending' };
+      s.transcript.push(started);
+      await this.#save();
+      /** The step's row, now with its outcome, where it started. */
+      const settle = (entry: TranscriptEntry) => {
+        const at = s.transcript.indexOf(started);
+        if (at >= 0) s.transcript[at] = entry; else s.transcript.push(entry);
+      };
       this.#callStarted = this.#now();
       const ran = await this.#deps.controller.run(call.args, this.#cancel);
       const notes = 'observation' in ran && ran.observation ? this.#notes.notesFor(ran.observation.url) : undefined;
@@ -604,7 +615,7 @@ export class AgentLoop {
         } catch (error) {
           // Storage refused it: the call still gets its one answer, without the image.
           this.#answer(call, { error: `The screenshot could not be kept: ${error instanceof Error ? error.message : String(error)}`, notice: 'Nothing was dispatched.' }, true);
-          s.transcript.push({ kind: 'action', text: describeStep(call.args, targets, false), outcome: 'error', detail: 'The screenshot could not be kept.' });
+          settle({ kind: 'action', text: describeStep(call.args, targets, false), outcome: 'error', detail: 'The screenshot could not be kept.' });
           failed = true;
           s.actions += 1;
           await this.#save();
@@ -613,11 +624,11 @@ export class AgentLoop {
       }
       if (image) {
         this.#traceCall(call, { completed: true, screenshot: { width: image.width, height: image.height } }, false);
-        s.transcript.push({ kind: 'action', text: describeStep(call.args, targets, outcome === 'ok'), outcome, image });
+        settle({ kind: 'action', text: describeStep(call.args, targets, outcome === 'ok'), outcome, image });
         await this.#media.prune();
       } else {
         this.#answer(call, result, outcome !== 'ok');
-        s.transcript.push({ kind: 'action', text: describeStep(call.args, targets, outcome === 'ok'), outcome, ...(detail ? { detail } : {}) });
+        settle({ kind: 'action', text: describeStep(call.args, targets, outcome === 'ok'), outcome, ...(detail ? { detail } : {}) });
       }
       s.actions += 1;
       if ('terminal' in result) terminal = result.terminal;

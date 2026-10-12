@@ -167,6 +167,9 @@ input[type=checkbox] { width: auto; height: auto; }
 /* Refused or skipped: a hollow amber ring. Uncertain or failed: a red diamond. */
 .step .refused::before, .step .skipped::before { background: transparent; box-shadow: inset 0 0 0 2px var(--v-warn-dot); }
 .step .unknown::before, .step .error::before { border-radius: 1.5px; background: var(--v-danger); transform: rotate(45deg) scale(.9); }
+/* Under way: a violet dot that breathes until the step's result is back. */
+.step .pending::before { background: var(--v-accent); animation: v-breathe 1200ms ease-in-out infinite; }
+.step .pending { color: var(--v-text); }
 .step .refused, .step .skipped { color: var(--v-warn); }
 .step .unknown, .step .error { color: var(--v-danger); }
 .step .detail { margin: 0 0 4px 23px; font-size: var(--v-fs-xs); line-height: 17px; color: var(--v-text-muted); white-space: pre-wrap; }

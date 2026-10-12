@@ -77,7 +77,8 @@ export type RunStatus = 'idle' | 'running' | 'paused';
 export type TranscriptEntry =
   | { kind: 'owner'; text: string; attachments?: OwnerAttachment[] }
   | { kind: 'agent'; text: string }
-  | { kind: 'action'; text: string; outcome: 'ok' | 'refused' | 'unknown' | 'error' | 'skipped'; detail?: string;
+  /** `pending`: the step has started and its result is not back yet; the row is updated in place when it is. */
+  | { kind: 'action'; text: string; outcome: 'pending' | 'ok' | 'refused' | 'unknown' | 'error' | 'skipped'; detail?: string;
       /** A screenshot the action took; `expired` once only the newest ones are kept. */
       image?: { id: string; width: number; height: number; bytes?: number; expired?: boolean } }
   /** A file the agent made for the owner to download. */

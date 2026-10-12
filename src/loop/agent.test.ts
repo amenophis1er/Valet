@@ -92,7 +92,7 @@ function harness(turns: Turn[], options: { saved?: Persisted; connection?: Conne
     learning: { get: () => learning, async set(on) { learning = on; } },
     async preview(args) { previews.push(args); },
     async note(note) { notes.push(note); },
-    emit(state) { states.push(state); },
+    emit(state) { states.push(structuredClone(state)); },
     retryDelaysMs: [0, 0],
     ...(options.now ? { now: options.now } : {}),
   };
@@ -1244,5 +1244,29 @@ describe('questions to the owner (ask_owner)', () => {
     const events = (JSON.parse(h.loop.exportTrace()) as { events: Array<Record<string, unknown>> }).events;
     expect(events).toContainEqual(expect.objectContaining({ kind: 'question', question: 'Which mug should I add?', options: ['Blue mug', 'Red mug', 'Sage mug'], multi: false }));
     expect(events).toContainEqual(expect.objectContaining({ kind: 'reply', reply: 'Blue mug' }));
+  });
+});
+
+describe('steps as they happen', () => {
+  it('shows a step as soon as it starts, then updates that same row with its outcome', async () => {
+    const h = harness([callTurn({ id: 'n', args: { action: 'navigate', url: 'https://shop.test/' } })]);
+    await h.loop.run('Open the shop', undefined, true);
+    const actions = (state: PanelState) => state.transcript.filter((entry) => entry.kind === 'action');
+    // Before the result was back, the panel already had the step, under way.
+    const during = h.states.find((state) => actions(state).some((entry) => entry.outcome === 'pending'));
+    expect(actions(during!)).toEqual([{ kind: 'action', text: 'Open https://shop.test/', outcome: 'pending' }]);
+    // Once back: one row for it, done, where it started.
+    expect(actions(h.loop.state)).toEqual([expect.objectContaining({ text: 'Opened https://shop.test/', outcome: 'ok' })]);
+  });
+
+  it('a step still under way when the worker died is shown as uncertain after the restart', async () => {
+    const saved: Persisted = {
+      history: [{ role: 'user', content: 'go' }, { role: 'assistant', toolCalls: [{ id: 'x1', name: 'browser', args: { action: 'click' } }] }],
+      transcript: [{ kind: 'owner', text: 'go' }, { kind: 'action', text: 'Click button "Go"', outcome: 'pending' }], status: 'running', actions: 0, startedAt: 0, connection: CONNECTION, handedTab: null,
+      scope: { mode: 'ask', runOrigins: [], chatOrigins: [], deniedOrigins: [], chatSubmissions: [], deniedSubmissions: [] },
+    };
+    const h = harness([], { saved });
+    await h.loop.restore();
+    expect(h.loop.state.transcript[1]).toEqual({ kind: 'action', text: 'Click button "Go"', outcome: 'unknown' });
   });
 });

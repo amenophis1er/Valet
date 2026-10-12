@@ -474,6 +474,13 @@ function dots(): HTMLElement {
   return holder;
 }
 
+/** A step as its row says it: done, under way (…), or what went wrong. */
+function stepText(entry: StepEntry): string {
+  if (entry.outcome === 'ok') return entry.text;
+  if (entry.outcome === 'pending') return `${entry.text}…`;
+  return `${entry.text} — ${entry.outcome}`;
+}
+
 /** One step as a quiet row; its outcome and detail open on click. */
 function stepRow(entry: StepEntry, withImage: boolean): HTMLLIElement {
   const item = document.createElement('li');
@@ -481,7 +488,7 @@ function stepRow(entry: StepEntry, withImage: boolean): HTMLLIElement {
   const details = document.createElement('details');
   const summary = document.createElement('summary');
   summary.className = `action ${entry.outcome}`;
-  summary.textContent = entry.outcome === 'ok' ? entry.text : `${entry.text} — ${entry.outcome}`;
+  summary.textContent = stepText(entry);
   details.append(summary);
   if (entry.detail) {
     const detail = document.createElement('div');
@@ -519,14 +526,14 @@ function activity(group: Entry[], key: number, live = false): HTMLLIElement[] {
   details.open = openFolds.has(key);
   details.ontoggle = () => { if (details.open) openFolds.add(key); else openFolds.delete(key); };
   const summary = document.createElement('summary');
-  const problems = steps.filter((step) => step.outcome !== 'ok');
+  const problems = steps.filter((step) => step.outcome !== 'ok' && step.outcome !== 'pending');
   const telling = [...steps].reverse().find((step) => step.text !== 'Read the page') ?? steps.at(-1)!;
   const count = document.createElement('span');
   count.className = 'count-steps';
   count.textContent = `${steps.length} step${steps.length === 1 ? '' : 's'}`;
   const latest = document.createElement('span');
   latest.className = 'latest';
-  latest.textContent = telling.outcome === 'ok' ? telling.text : `${telling.text} — ${telling.outcome}`;
+  latest.textContent = stepText(telling);
   summary.append(count, latest);
   if (live) summary.append(dots());
   if (problems.length > 0 && !(problems.length === 1 && problems[0] === telling)) {
@@ -1217,7 +1224,7 @@ function closeSkillMenu(): void {
 /** What a screen reader hears: the newest answer or notice, once, rather than the whole transcript on every rebuild. */
 let announced = '';
 function announce(entries: readonly Entry[]): void {
-  const newest = [...entries].reverse().find((entry) => entry.kind === 'agent' || entry.kind === 'notice' || (entry.kind === 'action' && entry.outcome !== 'ok'));
+  const newest = [...entries].reverse().find((entry) => entry.kind === 'agent' || entry.kind === 'notice' || (entry.kind === 'action' && entry.outcome !== 'ok' && entry.outcome !== 'pending'));
   const text = !newest ? '' : newest.kind === 'action' ? `${newest.text}: ${newest.outcome}` : newest.kind === 'file' ? '' : newest.text;
   if (text === announced) return;
   announced = text;
