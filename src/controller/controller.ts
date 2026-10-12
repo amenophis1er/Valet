@@ -138,6 +138,8 @@ export class RunController {
   get latestId(): string | undefined { return this.#latest?.id; }
   /** The latest observation's targets, to describe an action in words the owner knows. */
   get latestTargets(): readonly NonNullable<Observation['targets']>[number][] { return this.#latest?.targets ?? []; }
+  /** The latest observation's tree: it names the targets the bound dropped from the list. */
+  get latestTree(): string { return this.#latest?.tree ?? ''; }
   /** Frame metadata of the latest observation, for redaction and scope. */
   get latestFrames(): readonly FrameInfo[] { return this.#frames; }
 

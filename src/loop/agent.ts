@@ -20,6 +20,7 @@ import type { AIChatRequest, AIChatResult, AIContentPart, AIMessage, AIToolCall 
 import type { AskReason, Fingerprint, RunController, ToolResult } from '../controller/controller.js';
 import { BROWSER_TOOL, describeStep } from '../actions/index.js';
 import { Cancellation } from '../executor/protocol.js';
+import { targetInTree } from '../controller/observation.js';
 import { SYSTEM_PROMPT, goalMessage, historyView } from './prompt.js';
 import { decide, newScope, nextRun, originOf, reachable, verdict, type Decision, type Mode, type SubmitTarget, type Verdict } from '../scope/scope.js';
 import type { Media, PanelState, TranscriptEntry } from './protocol.js';
@@ -590,7 +591,7 @@ export class AgentLoop {
       this.#cancel = new Cancellation();
       if (this.#life.stopRequested) this.#cancel.cancel();
       // Named from the page as the model saw it, before the action changes it.
-      const targets = [...this.#deps.controller.latestTargets];
+      const targets = this.#targetsFor(call.args);
       await this.#learn.before(call.args ?? {}, targets, why);
       if (this.#life.stopRequested) this.#cancel.cancel();
       // Shown as it starts: the page changes long before the step's result is back (it waits for the page and reads it again).
@@ -638,6 +639,19 @@ export class AgentLoop {
       await this.#save();
     }
     return terminal;
+  }
+
+  /** The targets a step can be named from: the latest list, and a ref it names that the bound left only in the tree. */
+  #targetsFor(args: Record<string, unknown> | undefined): Array<{ ref: string; role: string; name: string }> {
+    const controller = this.#deps.controller;
+    const targets: Array<{ ref: string; role: string; name: string }> = [...controller.latestTargets];
+    const refs = [(args?.['target'] as { ref?: unknown } | undefined)?.ref, ((args?.['to'] as { target?: { ref?: unknown } } | undefined)?.target)?.ref];
+    for (const ref of refs) {
+      if (typeof ref !== 'string' || targets.some((target) => target.ref === ref)) continue;
+      const found = targetInTree(controller.latestTree, ref);
+      if (found) targets.push(found);
+    }
+    return targets;
   }
 
   /** The step whose outcome is unknown, for the pause that follows it. */

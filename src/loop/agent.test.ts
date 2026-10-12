@@ -22,7 +22,7 @@ function page(): ExecutorObservation {
 
 type Turn = (request: AIChatRequest, signal: AbortSignal) => Promise<AIChatResult> | AIChatResult;
 
-function harness(turns: Turn[], options: { saved?: Persisted; connection?: Connection | null; failNext?: Error[]; /** A fill fails once dispatch has begun: its outcome is unknown. */ failDispatched?: Error; scoped?: boolean; mode?: 'ask' | 'auto'; blockedAfter?: string; captureOrigin?: string; skills?: Skill[]; learning?: boolean; now?: () => number; /** skills.get waits for this: a run held in starting. */ skillsHeld?: Promise<void> } = {}) {
+function harness(turns: Turn[], options: { saved?: Persisted; connection?: Connection | null; failNext?: Error[]; /** A fill fails once dispatch has begun: its outcome is unknown. */ failDispatched?: Error; scoped?: boolean; mode?: 'ask' | 'auto'; blockedAfter?: string; captureOrigin?: string; skills?: Skill[]; learning?: boolean; now?: () => number; /** skills.get waits for this: a run held in starting. */ skillsHeld?: Promise<void>; /** The page every observation shows. */ page?: () => ExecutorObservation } = {}) {
   const ran: Command[] = [];
   const requests: AIChatRequest[] = [];
   const failNext = options.failNext ?? [];
@@ -37,7 +37,7 @@ function harness(turns: Turn[], options: { saved?: Persisted; connection?: Conne
       if (command.name === 'navigate') tab = true;
       return {};
     },
-    async observe() { return page(); },
+    async observe() { return options.page?.() ?? page(); },
     async capture(_session, _cancel, allow) {
       const origin = options.captureOrigin ?? 'https://shop.test';
       if (allow && !allow(origin)) throw new PreconditionError(`The tab is on ${origin}, which is not allowed for this run, so no screenshot was taken.`);
@@ -1268,5 +1268,18 @@ describe('steps as they happen', () => {
     const h = harness([], { saved });
     await h.loop.restore();
     expect(h.loop.state.transcript[1]).toEqual({ kind: 'action', text: 'Click button "Go"', outcome: 'unknown' });
+  });
+});
+
+describe('naming a step on a large page', () => {
+  it('names a target the bound dropped from the list from its line in the tree, not by its ref', async () => {
+    const big = (): ExecutorObservation => ({ ...page(), tree: '- button "Go" [ref=e1]\n- link "Blue mug" [ref=e84]' });
+    const h = harness([
+      callTurn({ id: 'n', args: { action: 'navigate', url: 'https://shop.test/' } }),
+      (request) => callTurn({ id: 'c', args: { action: 'click', observation: lastObservationId(request), target: { ref: 'e84' } } })(request, new AbortController().signal),
+    ], { page: big });
+    await h.loop.run('Open the blue mug', undefined, true);
+    expect(h.loop.state.transcript.filter((entry) => entry.kind === 'action').map((entry) => (entry as { text: string }).text))
+      .toEqual(['Opened https://shop.test/', 'Clicked link "Blue mug"']);
   });
 });
