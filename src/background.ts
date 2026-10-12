@@ -15,7 +15,7 @@ import { devReload } from './dev.js';
 import type { WorkerChrome } from './executor/chrome.js';
 import { BrowserCommands, type Pace } from './executor/commands.js';
 import { AgentLoop, type Persisted } from './loop/agent.js';
-import { AI_PREFIX, LEARNING_KEY, MAIN_CONVERSATION, MEDIA_PREFIX, MODE_KEY, PACE_KEY, conversationForTab, conversationOfPort, panelPath, tabOfConversation, type PanelIntent, type WorkerMessage } from './loop/protocol.js';
+import { AI_PREFIX, LEARNING_KEY, LIMIT_KEY, MAIN_CONVERSATION, MEDIA_PREFIX, MODE_KEY, PACE_KEY, runLimit, conversationForTab, conversationOfPort, panelPath, tabOfConversation, type PanelIntent, type WorkerMessage } from './loop/protocol.js';
 import { agentPanelPaths, panelAssignments } from './panels.js';
 import { printToPdf, type PdfChrome } from './pdf.js';
 import { installProviderRules } from './scope/provider-rules.js';
@@ -253,6 +253,7 @@ function make(id: string): Conversation {
       set: async (events) => { await chrome.storage.session.set({ [traceKey(id)]: events }); },
       remove: async () => { await chrome.storage.session.remove([traceKey(id)]); },
     },
+    limit: { get: async () => runLimit((await chrome.storage.local.get(LIMIT_KEY))[LIMIT_KEY]) },
     mode: {
       get: async () => ((await chrome.storage.local.get(MODE_KEY))[MODE_KEY] === 'auto' ? 'auto' : 'ask'),
       set: async (mode) => { await chrome.storage.local.set({ [MODE_KEY]: mode }); },

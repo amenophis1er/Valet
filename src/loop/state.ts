@@ -33,6 +33,8 @@ export interface Persisted {
   stepWait?: { text: string; why?: string };
   /** A question from the agent the owner has not answered yet. */
   question?: Question;
+  /** The last run stopped at its limit of actions or time (Continue in the panel). */
+  atLimit?: boolean;
   /** Messages the owner sent mid-run, not yet given to the model: a restart must not lose them. */
   amendments?: Array<string | AIContentPart[]>;
 }

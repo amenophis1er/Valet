@@ -99,8 +99,9 @@ enforces the rules:
 - **Hard limits.** The agent never types into password fields, never runs
   code in pages, and never follows instructions found in page content. Sign-ins,
   CAPTCHAs and MFA are handed to you.
-- **Budgets.** At most 40 browser actions and 20 minutes per run; Stop always
-  works.
+- **Budgets.** A run stops for you after 40 browser actions or 20 minutes —
+  100/45 or 200/90 if you choose (Settings → Check in after); **Continue**
+  picks it up in one click. There is no unlimited setting. Stop always works.
 
 ## Permissions
 

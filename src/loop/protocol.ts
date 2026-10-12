@@ -36,6 +36,19 @@ export const PACE_KEY = 'agent:pace';
 export const LEARNING_KEY = 'agent:learning';
 /** The last approval mode, in chrome.storage.local: the next conversation starts in it. */
 export const MODE_KEY = 'agent:mode';
+/** How long a run goes before it checks in with the owner, in chrome.storage.local: a number of actions from RUN_LIMITS. */
+export const LIMIT_KEY = 'agent:limit';
+
+/**
+ * The run limits the owner can pick (Settings → Check in after). There is a
+ * ceiling on purpose: a run that loops, or that a page steers, still stops.
+ */
+export const RUN_LIMITS = [{ actions: 40, minutes: 20 }, { actions: 100, minutes: 45 }, { actions: 200, minutes: 90 }] as const;
+export type RunLimit = (typeof RUN_LIMITS)[number];
+/** The stored choice, or the first (the default) for anything else. */
+export function runLimit(stored: unknown): RunLimit {
+  return RUN_LIMITS.find((limit) => limit.actions === stored) ?? RUN_LIMITS[0];
+}
 
 /** What is stored under a media key. */
 export type Media =
@@ -104,6 +117,8 @@ export interface PanelState {
   learning: boolean;
   /** A question from the agent, waiting for the owner's pick (ask.ts). */
   question?: Question;
+  /** The last run stopped at its limit of actions or time: the panel offers Continue. */
+  atLimit?: boolean;
 }
 
 /** A question the agent asked with `ask_owner`. Its words are the model's, and may come from a page: never an approval. */

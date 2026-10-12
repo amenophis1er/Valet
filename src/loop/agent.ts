@@ -23,7 +23,7 @@ import { Cancellation } from '../executor/protocol.js';
 import { targetInTree } from '../controller/observation.js';
 import { SYSTEM_PROMPT, goalMessage, historyView } from './prompt.js';
 import { decide, newScope, nextRun, originOf, reachable, verdict, type Decision, type Mode, type SubmitTarget, type Verdict } from '../scope/scope.js';
-import type { Media, PanelState, TranscriptEntry } from './protocol.js';
+import { RUN_LIMITS, type Media, type PanelState, type RunLimit, type TranscriptEntry } from './protocol.js';
 import { SAVE_FILE_TOOL } from './files.js';
 import { attachmentParts, checkAttachments, type Attachment } from './attachments.js';
 import type { Skill } from '../skills/skills.js';
@@ -42,8 +42,9 @@ export type { Connection, Persisted } from './state.js';
 
 export { DRAFT_CHARS, trimDraft, type SkillDraft } from './skill-notes.js';
 
-export const MAX_ACTIONS = 40;
-export const MAX_RUN_MS = 20 * 60_000;
+/** The default run limits (Settings → Check in after can raise them; protocol.ts). */
+export const MAX_ACTIONS: number = RUN_LIMITS[0].actions;
+export const MAX_RUN_MS: number = RUN_LIMITS[0].minutes * 60_000;
 /** Waits before sending a model request again after a dropped connection or a server failure. */
 const RETRY_DELAYS_MS = [2_000, 5_000];
 /** The output cap of a model turn, and the one a turn gets after a reply was cut off at it. */
@@ -93,6 +94,8 @@ export interface LoopDeps {
   learning: { get(): boolean; set(on: boolean): Promise<void> };
   /** Learning: the cursor onto where the step would go, and the bubble saying what it is. Both best effort. */
   preview(args: Record<string, unknown>): Promise<void>;
+  /** How long a run goes before it checks in (Settings), read as a run starts or resumes; the default without it. */
+  limit?: { get(): Promise<RunLimit> };
   note(note: Note | null): Promise<void>;
   emit(state: PanelState): void;
   /** Where the run trace is kept, beside the conversation (trace.ts); without it, the trace lives in memory only. */
@@ -145,6 +148,8 @@ export class AgentLoop {
   /** The model turn this run is on, for the trace; and when the tool call in flight started. */
   #turn = 0;
   #callStarted?: number;
+  /** This run's limits, read from the owner's setting as it starts or resumes. */
+  #limit: { actions: number; ms: number } = { actions: MAX_ACTIONS, ms: MAX_RUN_MS };
   /** The loop's parts, each owning one concern of the conversation. */
   readonly #approvals: Approvals;
   readonly #media: MediaKeeper;
@@ -178,7 +183,8 @@ export class AgentLoop {
     return { status: s.status, ...(s.pauseReason ? { pauseReason: s.pauseReason } : {}), transcript: s.transcript,
       handedTab: s.handedTab, connection: s.connection ? { label: s.connection.label, model: s.connection.model } : null, actions: s.actions,
       ...(s.approval ? { approval: s.approval } : {}), mode: s.scope.mode, workspace: s.workspace ?? null,
-      ...(s.stepWait ? { stepWait: s.stepWait } : {}), learning: this.#learn.on, ...(s.question ? { question: s.question } : {}) };
+      ...(s.stepWait ? { stepWait: s.stepWait } : {}), learning: this.#learn.on, ...(s.question ? { question: s.question } : {}),
+      ...(s.atLimit ? { atLimit: true } : {}) };
   }
 
   /** Learn on or off, from the composer. Off while a step waits lets that step go. */
@@ -358,8 +364,10 @@ export class AgentLoop {
     this.#turn = 0;
     this.#trace.record({ kind: 'run', goal: text, where: (continuing ? here?.url : handed?.url) ?? (useNewTab ? 'a new tab' : 'its own tab'), mode: s.scope.mode, learn: this.#learn.on, model: `${connection.label} · ${connection.model}` });
     if (firstRequest && s.scope.mode === 'auto') this.#note('Auto is on, as in your last conversation: sites are approved without asking, and so are searches and filters. A form that sends data still asks. Change it with the Auto button under the message box.');
+    await this.#readLimit();
     this.#life.to('running');
     s.pauseReason = undefined;
+    s.atLimit = undefined;
     s.actions = 0;
     s.startedAt = this.#now();
     const shown = await this.#media.keepAttachments(attachments);
@@ -394,6 +402,7 @@ export class AgentLoop {
 
   async #resumeRun(): Promise<void> {
     await this.#notes.refresh();
+    await this.#readLimit();
     this.#deps.controller.resume();
     this.#life.to('running');
     this.#state.pauseReason = undefined;
@@ -403,6 +412,12 @@ export class AgentLoop {
     await this.#contain();
     await this.#save();
     this.#running = this.#loop();
+  }
+
+  /** The owner's run limits, for the run that starts or resumes now. */
+  async #readLimit(): Promise<void> {
+    const limit = await this.#deps.limit?.get().catch(() => undefined);
+    this.#limit = limit ? { actions: limit.actions, ms: limit.minutes * 60_000 } : { actions: MAX_ACTIONS, ms: MAX_RUN_MS };
   }
 
   /** Stop: abort the model request and the executor command in flight. */
@@ -458,8 +473,8 @@ export class AgentLoop {
         // Guards before every model turn, not only before calls.
         if (this.#life.stopRequested) return this.#end('Stopped.');
         if (this.#controllerPaused()) return this.#pause(this.#pauseReason());
-        if (s.actions >= MAX_ACTIONS) return this.#end(`Stopped after ${MAX_ACTIONS} browser actions, the limit for one run. Say "continue" to go on.`);
-        if (this.#now() - s.startedAt > MAX_RUN_MS) return this.#end('Stopped after 20 minutes, the limit for one run. Say "continue" to go on.');
+        if (s.actions >= this.#limit.actions) return this.#end(`Stopped after ${this.#limit.actions} browser actions, the limit for one run. Continue to go on; Settings → Check in after sets the limit.`, true);
+        if (this.#now() - s.startedAt > this.#limit.ms) return this.#end(`Stopped after ${Math.round(this.#limit.ms / 60_000)} minutes, the limit for one run. Continue to go on; Settings → Check in after sets the limit.`, true);
         if (this.#storedChars() > MAX_STATE_CHARS) return this.#end(TOO_LONG);
         for (const content of this.#amendments.splice(0)) s.history.push({ role: 'user', content });
 
@@ -583,7 +598,7 @@ export class AgentLoop {
         continue;
       }
       // The run's limits hold inside a batch too: the rest of it is not run, and the loop ends the run with the reason.
-      if (s.actions >= MAX_ACTIONS || this.#now() - s.startedAt > MAX_RUN_MS) {
+      if (s.actions >= this.#limit.actions || this.#now() - s.startedAt > this.#limit.ms) {
         this.#answer(call, { skipped: 'The run reached its limit of browser actions or time; nothing was dispatched.' }, true);
         failed = true;
         continue;
@@ -757,8 +772,10 @@ export class AgentLoop {
     }
   }
 
-  async #end(notice?: string): Promise<void> {
+  /** `atLimit`: the run stopped at its limit of actions or time, and the panel offers Continue. */
+  async #end(notice?: string, atLimit = false): Promise<void> {
     if (notice) this.#note(notice);
+    if (atLimit) this.#state.atLimit = true;
     this.#life.to('idle');
     this.#unknownStep = undefined;
     await this.#learn.clear();

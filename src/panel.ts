@@ -13,7 +13,7 @@ import { readAttachment, thumbnailOf } from './composer.js';
 import { grabFrame } from './share.js';
 import { dictation as attachDictation, onDeviceModel, type ModelState } from './dictation/index.js';
 import { MAX_ATTACHMENTS, checkAttachments, type Attachment } from './loop/attachments.js';
-import { AI_PREFIX, HEARTBEAT_MS, MEDIA_PREFIX, PACE_KEY, PANEL_PORT, conversationForTab, panelPortName, type Media, type PanelIntent, type PanelState, type WorkerMessage } from './loop/protocol.js';
+import { AI_PREFIX, HEARTBEAT_MS, LIMIT_KEY, MEDIA_PREFIX, PACE_KEY, PANEL_PORT, RUN_LIMITS, conversationForTab, runLimit, panelPortName, type Media, type PanelIntent, type PanelState, type WorkerMessage } from './loop/protocol.js';
 import { conversationHtml, conversationMarkdown } from './export.js';
 import { MAX_SKILL_CHARS, exportSkills, importSkills, loadSkills, newSkillId, parseSites, removeSkill, saveSkill, validateSkill, type Skill } from './skills/skills.js';
 
@@ -403,6 +403,7 @@ function render(): void {
     list.append(item);
   }
   if (skillable()) list.append(saveSkillRow());
+  if (state.atLimit && state.status === 'idle') list.append(continueRow());
   if (steerFocused) document.getElementById('skill-focus')?.focus();
   announce(entries);
   list.scrollTop = list.scrollHeight;
@@ -1060,11 +1061,50 @@ async function renderPace(): Promise<void> {
   }
 }
 
+/** Settings → Check in after: how many actions (and minutes) a run goes before it stops for the owner. */
+async function renderLimit(): Promise<void> {
+  const chosen = runLimit((await chrome.storage.local.get(LIMIT_KEY))[LIMIT_KEY]);
+  const note = (limit: (typeof RUN_LIMITS)[number]) => `A run stops for you after ${limit.actions} browser actions or ${limit.minutes} minutes, whichever comes first; Continue picks it up.${limit.actions > RUN_LIMITS[0].actions ? ' Longer runs use more of your model.' : ''}`;
+  const group = $('limits');
+  group.textContent = '';
+  for (const limit of RUN_LIMITS) {
+    const label = document.createElement('label');
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'limit';
+    radio.value = String(limit.actions);
+    radio.checked = limit.actions === chosen.actions;
+    radio.onchange = () => {
+      if (!radio.checked) return;
+      $('limit-note').textContent = note(limit);
+      void chrome.storage.local.set({ [LIMIT_KEY]: limit.actions });
+    };
+    const text = document.createElement('span');
+    text.textContent = `${limit.actions} steps`;
+    label.append(radio, text);
+    group.append(label);
+  }
+  $('limit-note').textContent = note(chosen);
+}
+
+/** After a run stopped at its limit: Continue, as the owner would say it. */
+function continueRow(): HTMLLIElement {
+  const item = document.createElement('li');
+  item.className = 'continue-row';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'primary';
+  button.textContent = 'Continue';
+  button.onclick = () => { button.disabled = true; send({ type: 'run', goal: 'Continue' }); };
+  item.append(button);
+  return item;
+}
+
 function showSettings(open: boolean): void {
   $('open-settings').setAttribute('aria-pressed', String(open));
   $('settings-view').hidden = !open;
   $('chat-view').hidden = open;
-  if (open) { void connections.render(); void renderPace(); void renderSkills(); void renderModel(); }
+  if (open) { void connections.render(); void renderPace(); void renderLimit(); void renderSkills(); void renderModel(); }
   else { send({ type: 'get' }); void renderActiveConnection(); }
 }
 

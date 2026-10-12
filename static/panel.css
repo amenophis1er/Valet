@@ -476,3 +476,7 @@ button.stop:hover { background: var(--v-danger-soft); }
   .menu, .card, .step-bar, .lightbox[open] { animation-name: v-fade; }
   .activity > details > summary::before, .switch span::after { transition: none; }
 }
+
+/* After a run stopped at its limit: Continue, one click. */
+.continue-row { display: flex; padding: 2px 0 4px; }
+.continue-row button { min-height: 36px; }

@@ -22,7 +22,7 @@ function page(): ExecutorObservation {
 
 type Turn = (request: AIChatRequest, signal: AbortSignal) => Promise<AIChatResult> | AIChatResult;
 
-function harness(turns: Turn[], options: { saved?: Persisted; connection?: Connection | null; failNext?: Error[]; /** A fill fails once dispatch has begun: its outcome is unknown. */ failDispatched?: Error; scoped?: boolean; mode?: 'ask' | 'auto'; blockedAfter?: string; captureOrigin?: string; skills?: Skill[]; learning?: boolean; now?: () => number; /** skills.get waits for this: a run held in starting. */ skillsHeld?: Promise<void>; /** The page every observation shows. */ page?: () => ExecutorObservation } = {}) {
+function harness(turns: Turn[], options: { saved?: Persisted; connection?: Connection | null; failNext?: Error[]; /** A fill fails once dispatch has begun: its outcome is unknown. */ failDispatched?: Error; scoped?: boolean; mode?: 'ask' | 'auto'; blockedAfter?: string; captureOrigin?: string; skills?: Skill[]; learning?: boolean; now?: () => number; /** skills.get waits for this: a run held in starting. */ skillsHeld?: Promise<void>; /** The page every observation shows. */ page?: () => ExecutorObservation; /** The owner's run limit (Settings). */ limit?: { actions: number; minutes: number } } = {}) {
   const ran: Command[] = [];
   const requests: AIChatRequest[] = [];
   const failNext = options.failNext ?? [];
@@ -94,6 +94,7 @@ function harness(turns: Turn[], options: { saved?: Persisted; connection?: Conne
     async note(note) { notes.push(note); },
     emit(state) { states.push(structuredClone(state)); },
     retryDelaysMs: [0, 0],
+    ...(options.limit ? { limit: { get: async () => options.limit as never } } : {}),
     ...(options.now ? { now: options.now } : {}),
   };
   loop = new AgentLoop(deps);
@@ -1281,5 +1282,42 @@ describe('naming a step on a large page', () => {
     await h.loop.run('Open the blue mug', undefined, true);
     expect(h.loop.state.transcript.filter((entry) => entry.kind === 'action').map((entry) => (entry as { text: string }).text))
       .toEqual(['Opened https://shop.test/', 'Clicked link "Blue mug"']);
+  });
+});
+
+describe('run limits and Continue', () => {
+  const observes = (count: number): Turn[] => Array.from({ length: count }, (_, i) => callTurn({ id: `o${i}`, args: { action: 'observe' } }));
+
+  it('stops at the owner\'s limit, says so, and offers Continue; the next message starts a fresh stretch without it', async () => {
+    const h = harness([...observes(105), () => ({ ok: true, text: 'Carried on.', stopReason: 'end' })], { limit: { actions: 100, minutes: 45 } });
+    await h.loop.run('a long task');
+    expect(h.loop.state.actions).toBe(100);
+    expect(h.loop.state.atLimit).toBe(true);
+    expect(h.loop.state.transcript.at(-1)).toMatchObject({ kind: 'notice', text: expect.stringMatching(/^Stopped after 100 browser actions.*Continue to go on/) });
+    await h.loop.run('Continue');
+    expect(h.loop.state.atLimit).toBeUndefined();
+    // The fresh stretch ran the rest, then the model answered.
+    expect(h.loop.state.transcript.at(-1)).toMatchObject({ kind: 'agent', text: 'Carried on.' });
+  });
+
+  it('the time limit follows the setting too', async () => {
+    let clock = 1_000;
+    const h = harness([
+      (request, signal) => { clock += 30 * 60_000; return callTurn({ id: 'a', args: { action: 'observe' } })(request, signal); },
+      (request, signal) => { clock += 30 * 60_000; return callTurn({ id: 'b', args: { action: 'observe' } })(request, signal); },
+    ], { now: () => clock, limit: { actions: 100, minutes: 45 } });
+    await h.loop.run('take your time');
+    // 30 minutes in, under 45: the first observe ran; 60 minutes in, over: the second did not.
+    expect(h.loop.state.actions).toBe(1);
+    expect(h.loop.state.atLimit).toBe(true);
+    expect(h.loop.state.transcript.at(-1)).toMatchObject({ kind: 'notice', text: expect.stringMatching(/^Stopped after 45 minutes/) });
+  });
+
+  it('offers no Continue after a run that finished, failed or was stopped', async () => {
+    const h = harness([() => ({ ok: false, error: 'nope', retryable: false })]);
+    await h.loop.run('go');
+    expect(h.loop.state.atLimit).toBeUndefined();
+    await h.loop.run('again');
+    expect(h.loop.state.atLimit).toBeUndefined();
   });
 });

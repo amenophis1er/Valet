@@ -879,6 +879,36 @@ test('a question from the agent: picked with one click, or answered by typing, a
   }
 });
 
+test('a run that stops at its limit offers Continue, and Settings sets the limit', async () => {
+  model.script([
+    () => ({ call: { action: 'navigate', url: `${fixture.main}/shop?t=limit` } }),
+    ...Array.from({ length: 39 }, () => () => ({ call: { action: 'observe' } })),
+    () => ({ text: 'Picked up where I stopped.' }),
+  ]);
+  const panel = await openPanel();
+  try {
+    await panel.getByRole('button', { name: 'New conversation' }).click();
+    await panel.locator('#goal').fill('Look around for a while');
+    await panel.getByRole('button', { name: 'Send' }).click();
+    await panel.getByRole('button', { name: 'Allow once' }).click({ timeout: 30_000 });
+    await expect(panel.locator('#transcript .notice').last()).toHaveText(/^Stopped after 40 browser actions/, { timeout: 60_000 });
+    await panel.getByRole('button', { name: 'Continue', exact: true }).click();
+    await expect(panel.locator('.agent').last()).toHaveText('Picked up where I stopped.', { timeout: 30_000 });
+    await expect(panel.getByRole('button', { name: 'Continue', exact: true })).toHaveCount(0);
+    await expect(panel.locator('#transcript .owner').last()).toHaveText('Continue');
+
+    // Settings → Check in after: kept for the next run.
+    await panel.getByRole('button', { name: 'Settings' }).click();
+    await panel.getByRole('radio', { name: '100 steps' }).check({ force: true });
+    await expect(panel.locator('#limit-note')).toContainText('after 100 browser actions or 45 minutes');
+    expect(await panel.evaluate(async () => (await (globalThis as any).chrome.storage.local.get('agent:limit'))['agent:limit'])).toBe(100);
+    await panel.getByRole('radio', { name: '40 steps' }).check({ force: true });
+    await panel.getByRole('button', { name: 'Settings' }).click();
+  } finally {
+    await panel.close();
+  }
+});
+
 test('Learning: each step waits for Next, with the bubble in the page saying what comes and why', async () => {
   model.script([
     () => ({ call: { action: 'navigate', url: `${fixture.main}/shop?t=learn` } }),
