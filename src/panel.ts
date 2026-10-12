@@ -423,13 +423,12 @@ function render(): void {
     $('step-why').textContent = wait.why ?? '';
   }
   const status = $('status');
-  status.hidden = !running && !paused;
+  // A question says it is waiting by itself.
+  status.hidden = (!running && !paused) || !!state.question;
   status.textContent = '';
   status.classList.toggle('working', running && !wait && !state.question);
   if (running && wait) {
     status.textContent = 'Waiting for you: press Next step, here or in the page.';
-  } else if (running && state.question) {
-    status.textContent = 'Waiting for your answer.';
   } else if (running) {
     const spinner = document.createElement('span');
     spinner.className = 'spinner';
@@ -606,21 +605,26 @@ function renderCard(): void {
 /** The question the picker is showing, and what the owner has picked in it so far (multi). */
 let askFor: string | undefined;
 let askPicked = new Set<string>();
-const GOAL_PLACEHOLDER = $<HTMLTextAreaElement>('goal').placeholder;
 
 /**
- * A question from the agent: one click answers a single choice; several need
- * Send. Typing in the message box answers it too (the worker takes a message
- * as the answer while a question is open), and Skip lets the agent decide.
+ * A question from the agent takes the composer's place: its options, one
+ * click for a single choice and Send for several; "Something else…" for an
+ * answer of the owner's own; Skip to let the agent decide; and Stop, which
+ * the hidden composer would otherwise hold.
  */
 function renderQuestion(): void {
   const box = $('ask');
   const question = state?.question;
   box.hidden = !question;
-  $<HTMLTextAreaElement>('goal').placeholder = question ? 'Type your own answer…' : GOAL_PLACEHOLDER;
+  $('box').hidden = !!question;
   if (!question) { askFor = undefined; askPicked = new Set(); return; }
   const fresh = askFor !== question.id;
-  if (fresh) { askFor = question.id; askPicked = new Set(); }
+  if (fresh) {
+    askFor = question.id;
+    askPicked = new Set();
+    $<HTMLTextAreaElement>('ask-input').value = '';
+    showOwnAnswer(false);
+  }
   // Built from nodes only: the words are the model's, and may come from a page.
   $('ask-text').textContent = question.question;
   const options = $('ask-options');
@@ -660,10 +664,25 @@ function renderQuestion(): void {
   sendButton.hidden = !question.multi;
   sendButton.disabled = askPicked.size === 0;
   sendButton.onclick = () => send({ type: 'answer', id: question.id, picked: [...askPicked] });
-  $('ask-hint').textContent = question.multi ? 'Pick any, or type your own answer below.' : 'Or type your own answer below.';
   $('ask-skip').onclick = () => send({ type: 'answer', id: question.id, skip: true });
   // Met at once by keyboard and screen reader users, once per question.
   if (fresh) (options.firstElementChild as HTMLElement | null)?.focus();
+}
+
+/** "Something else…": a field of its own in the picker, for an answer the options do not have. */
+function showOwnAnswer(open: boolean): void {
+  $('ask-own').hidden = !open;
+  $('ask-other').setAttribute('aria-expanded', String(open));
+  if (open) $('ask-input').focus();
+}
+
+/** The owner's own answer: while a question is open, the worker takes a message as the answer to it. */
+function sendOwnAnswer(): void {
+  const input = $<HTMLTextAreaElement>('ask-input');
+  const text = input.value.trim();
+  if (!text || !state?.question) return;
+  send({ type: 'run', goal: text });
+  input.value = '';
 }
 
 /** The approval mode, as the composer shows it: a word, amber in Auto, a menu to change it. */
@@ -1544,6 +1563,13 @@ $('goal').addEventListener('keydown', (event) => {
 $('stop').onclick = () => send({ type: 'stop' });
 $('step-next').onclick = () => send({ type: 'step' });
 $('learn').onclick = () => send({ type: 'set-learning', on: state?.learning !== true });
+$('ask-other').onclick = () => showOwnAnswer(true);
+$('ask-stop').onclick = () => send({ type: 'stop' });
+$('ask-own').addEventListener('submit', (event) => { event.preventDefault(); sendOwnAnswer(); });
+$('ask-input').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendOwnAnswer(); }
+  if (event.key === 'Escape') { showOwnAnswer(false); $('ask-other').focus(); }
+});
 $('resume').onclick = () => send({ type: 'resume' });
 // A new conversation: back in the chat, cursor in the message box, ready to type.
 $('new-conversation').onclick = () => {

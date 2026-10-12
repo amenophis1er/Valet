@@ -856,18 +856,22 @@ test('a question from the agent: picked with one click, or answered by typing, a
     const ask = panel.getByRole('group', { name: 'Which mug should I look at?' });
     await expect(ask).toBeVisible({ timeout: 30_000 });
     await expect(panel.locator('#card')).toBeHidden();
-    await expect(panel.locator('#status')).toHaveText('Waiting for your answer.');
-    await expect(panel.locator('#goal')).toHaveAttribute('placeholder', 'Type your own answer…');
+    // The question takes the composer's place; Stop moves into it.
+    await expect(panel.locator('#box')).toBeHidden();
+    await expect(ask.getByRole('button', { name: 'Stop' })).toBeVisible();
     await expect(ask.getByRole('button', { name: /Blue mug.*Suggested.*The cheapest/ })).toBeFocused();
     await panel.screenshot({ path: test.info().outputPath('question.png') });
     await ask.getByRole('button', { name: /Red mug/ }).click();
-    // The second question: typed in the message box instead of picked.
-    await expect(panel.getByRole('group', { name: 'Heard Red mug. Gift wrap?' })).toBeVisible({ timeout: 30_000 });
-    await panel.locator('#goal').fill('Only if it is free');
-    await panel.getByRole('button', { name: 'Send' }).click();
+    // The second question: answered in words of the owner's own, under "Something else…".
+    const second = panel.getByRole('group', { name: 'Heard Red mug. Gift wrap?' });
+    await expect(second).toBeVisible({ timeout: 30_000 });
+    await second.getByRole('button', { name: 'Something else…' }).click();
+    await expect(second.getByRole('textbox', { name: 'Your answer' })).toBeFocused();
+    await second.getByRole('textbox', { name: 'Your answer' }).fill('Only if it is free');
+    await second.getByRole('textbox', { name: 'Your answer' }).press('Enter');
     await expect(panel.locator('.agent').last()).toHaveText('Answer: Only if it is free', { timeout: 30_000 });
     await expect(panel.locator('#ask')).toBeHidden();
-    await expect(panel.locator('#goal')).not.toHaveAttribute('placeholder', 'Type your own answer…');
+    await expect(panel.locator('#box')).toBeVisible();
     // The transcript keeps each question with its answer.
     await expect(panel.locator('#transcript .owner')).toHaveText(['Help me pick a mug', 'Red mug', 'Only if it is free']);
   } finally {

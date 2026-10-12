@@ -251,8 +251,18 @@ input[type=checkbox] { width: auto; height: auto; }
 .ask-option .hint { font-size: var(--v-fs-xs); line-height: 17px; font-weight: 400; color: var(--v-text-muted); overflow-wrap: anywhere; }
 .ask-option .tag { font-size: var(--v-fs-2xs); line-height: var(--v-lh-2xs); font-weight: 600; padding: 1px 6px; border-radius: var(--v-radius-pill); background: var(--v-surface-sunk); color: var(--v-text-muted); }
 .ask-option[aria-pressed="true"] { background: var(--v-accent-soft); border-color: var(--v-accent-line); }
+.ask-other { border-style: dashed; }
+.ask-other .label { font-weight: 500; color: var(--v-text-muted); }
+.ask-other[aria-expanded="true"] { display: none; }
+.ask-own { display: flex; align-items: flex-end; gap: 6px; padding: 6px 6px 6px 10px; border: 1px solid var(--v-accent); border-radius: var(--v-radius-md); box-shadow: 0 0 0 3px var(--v-accent-soft); }
+.ask-own textarea { flex: 1; min-height: 40px; max-height: 140px; padding: 4px 0; border: 0; background: transparent; box-shadow: none; resize: none; font-size: var(--v-fs-sm); line-height: var(--v-lh-sm); }
+.ask-own textarea:focus { box-shadow: none; outline: none; }
+.ask-own .send { width: 32px; height: 32px; min-height: 32px; padding: 0; flex: none; border-radius: 50%; background: var(--v-accent); border-color: var(--v-accent); color: var(--v-on-accent); }
+.ask-own .send svg { width: 16px; height: 16px; stroke-width: 2.2; }
 .ask .row button { min-height: 36px; padding: 0 12px; }
-.ask .row small { font-size: var(--v-fs-xs); line-height: 17px; }
+.ask .ask-stop { color: var(--v-danger); }
+.ask .ask-stop:hover { background: var(--v-danger-soft); color: var(--v-danger); }
+.ask-stop svg { width: 14px; height: 14px; }
 
 /* Learn: the step the agent is waiting with, and Next. */
 .step-bar { display: flex; gap: 12px; align-items: center; padding: 12px 12px 12px 14px; border-radius: var(--v-radius-xl); border: 1px solid var(--v-accent-line); background: var(--v-surface-raised); box-shadow: var(--v-shadow-2); animation: v-rise var(--v-dur-slow) var(--v-ease-out); }

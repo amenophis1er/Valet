@@ -55,11 +55,16 @@
         <p class="ask-head"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M9.6 9.4a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.7M12 16.6v.4" /></svg>A question for you</p>
         <p id="ask-text" class="ask-text"></p>
         <div id="ask-options" class="ask-options"></div>
+        <button id="ask-other" class="ask-option ask-other" type="button" aria-expanded="false"><span class="label">Something else…</span></button>
+        <form id="ask-own" class="ask-own" hidden>
+          <textarea id="ask-input" rows="2" aria-label="Your answer" placeholder="Type your answer"></textarea>
+          <button id="ask-own-send" class="send" type="submit" aria-label="Send your answer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg></button>
+        </form>
         <div class="row">
-          <small id="ask-hint" class="muted">Or type your own answer below.</small>
+          <button id="ask-stop" class="ghost ask-stop" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2" /></svg>Stop</button>
           <span class="spacer"></span>
-          <button id="ask-skip" class="ghost">Skip</button>
-          <button id="ask-send" class="primary" hidden>Send</button>
+          <button id="ask-skip" class="ghost" type="button" title="Let the agent decide">Skip</button>
+          <button id="ask-send" class="primary" type="button" hidden>Send</button>
         </div>
       </div>
       <div id="step" class="step-bar" hidden>
