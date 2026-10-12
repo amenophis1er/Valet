@@ -62,6 +62,8 @@ export type PanelIntent =
   | { type: 'decide'; id: string; decision: 'once' | 'chat' | 'auto' | 'deny' }
   /** Turn Auto on or off for this conversation (and the next one's start). */
   | { type: 'set-mode'; mode: 'ask' | 'auto' }
+  /** The owner's answer to a question from the agent: the options picked, or `skip`. A typed answer comes as a `run`. */
+  | { type: 'answer'; id: string; picked?: string[]; skip?: boolean }
   /** Learning: let the step the agent is waiting with go ahead. */
   | { type: 'step' }
   /** Learning on or off, from the composer; kept for the next conversation too. */
@@ -99,6 +101,17 @@ export interface PanelState {
   stepWait?: { text: string; why?: string };
   /** Learning is on: each step is explained and waits for Next. */
   learning: boolean;
+  /** A question from the agent, waiting for the owner's pick (ask.ts). */
+  question?: Question;
+}
+
+/** A question the agent asked with `ask_owner`. Its words are the model's, and may come from a page: never an approval. */
+export interface Question {
+  id: string;
+  question: string;
+  /** The first is the one the agent recommends. */
+  options: Array<{ label: string; hint?: string }>;
+  multi: boolean;
 }
 
 export interface Approval {

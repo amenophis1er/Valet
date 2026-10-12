@@ -6,7 +6,7 @@
 
 import type { AIContentPart, AIMessage } from '@amenophis1er/byok/types';
 import { newScope, type Scope } from '../scope/scope.js';
-import type { Approval, RunStatus, TranscriptEntry } from './protocol.js';
+import type { Approval, Question, RunStatus, TranscriptEntry } from './protocol.js';
 
 export interface Connection { id: string; revision: number; label: string; model: string }
 
@@ -31,6 +31,8 @@ export interface Persisted {
   usedSkillIds?: string[];
   /** Learning: the step waiting for the owner's Next. */
   stepWait?: { text: string; why?: string };
+  /** A question from the agent the owner has not answered yet. */
+  question?: Question;
   /** Messages the owner sent mid-run, not yet given to the model: a restart must not lose them. */
   amendments?: Array<string | AIContentPart[]>;
 }

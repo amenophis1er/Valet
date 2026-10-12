@@ -425,9 +425,11 @@ function render(): void {
   const status = $('status');
   status.hidden = !running && !paused;
   status.textContent = '';
-  status.classList.toggle('working', running && !wait);
+  status.classList.toggle('working', running && !wait && !state.question);
   if (running && wait) {
     status.textContent = 'Waiting for you: press Next step, here or in the page.';
+  } else if (running && state.question) {
+    status.textContent = 'Waiting for your answer.';
   } else if (running) {
     const spinner = document.createElement('span');
     spinner.className = 'spinner';
@@ -441,6 +443,7 @@ function render(): void {
   else void renderActiveConnection();
 
   renderCard();
+  renderQuestion();
   keepAlive(running);
   renderTab();
 }
@@ -598,6 +601,69 @@ function renderCard(): void {
   const lead = leads[approval.reason] ?? 'The agent wants to use ';
   const tail = approval.reason === 'blocked' ? '. It was blocked; nothing was sent there. Allow the agent to go there?' : '. Allow it?';
   text.append(lead, origin, tail);
+}
+
+/** The question the picker is showing, and what the owner has picked in it so far (multi). */
+let askFor: string | undefined;
+let askPicked = new Set<string>();
+const GOAL_PLACEHOLDER = $<HTMLTextAreaElement>('goal').placeholder;
+
+/**
+ * A question from the agent: one click answers a single choice; several need
+ * Send. Typing in the message box answers it too (the worker takes a message
+ * as the answer while a question is open), and Skip lets the agent decide.
+ */
+function renderQuestion(): void {
+  const box = $('ask');
+  const question = state?.question;
+  box.hidden = !question;
+  $<HTMLTextAreaElement>('goal').placeholder = question ? 'Type your own answer…' : GOAL_PLACEHOLDER;
+  if (!question) { askFor = undefined; askPicked = new Set(); return; }
+  const fresh = askFor !== question.id;
+  if (fresh) { askFor = question.id; askPicked = new Set(); }
+  // Built from nodes only: the words are the model's, and may come from a page.
+  $('ask-text').textContent = question.question;
+  const options = $('ask-options');
+  options.textContent = '';
+  question.options.forEach((option, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ask-option';
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.append(option.label);
+    if (index === 0) {
+      const tag = document.createElement('span');
+      tag.className = 'tag';
+      tag.textContent = 'Suggested';
+      label.append(tag);
+    }
+    button.append(label);
+    if (option.hint) {
+      const hint = document.createElement('span');
+      hint.className = 'hint';
+      hint.textContent = option.hint;
+      button.append(hint);
+    }
+    if (question.multi) {
+      button.setAttribute('aria-pressed', String(askPicked.has(option.label)));
+      button.onclick = () => {
+        if (askPicked.has(option.label)) askPicked.delete(option.label); else askPicked.add(option.label);
+        renderQuestion();
+      };
+    } else {
+      button.onclick = () => send({ type: 'answer', id: question.id, picked: [option.label] });
+    }
+    options.append(button);
+  });
+  const sendButton = $<HTMLButtonElement>('ask-send');
+  sendButton.hidden = !question.multi;
+  sendButton.disabled = askPicked.size === 0;
+  sendButton.onclick = () => send({ type: 'answer', id: question.id, picked: [...askPicked] });
+  $('ask-hint').textContent = question.multi ? 'Pick any, or type your own answer below.' : 'Or type your own answer below.';
+  $('ask-skip').onclick = () => send({ type: 'answer', id: question.id, skip: true });
+  // Met at once by keyboard and screen reader users, once per question.
+  if (fresh) (options.firstElementChild as HTMLElement | null)?.focus();
 }
 
 /** The approval mode, as the composer shows it: a word, amber in Auto, a menu to change it. */

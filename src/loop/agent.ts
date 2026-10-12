@@ -12,7 +12,8 @@
  * lifecycle.ts; the conversation's other concerns are parts of their own, each
  * given the conversation through a narrow host (host.ts): the owner's
  * approvals (approvals.ts), screenshots, files and attachments (media.ts),
- * skills and "Save as skill" (skill-notes.ts), and Learn (learn.ts).
+ * skills and "Save as skill" (skill-notes.ts), Learn (learn.ts), and the
+ * agent's questions to the owner (ask.ts).
  */
 
 import type { AIChatRequest, AIChatResult, AIContentPart, AIMessage, AIToolCall } from '@amenophis1er/byok/types';
@@ -27,6 +28,7 @@ import { attachmentParts, checkAttachments, type Attachment } from './attachment
 import type { Skill } from '../skills/skills.js';
 import type { Note } from '../executor/commands.js';
 import { Approvals } from './approvals.js';
+import { ASK_TOOL, Questions } from './ask.js';
 import type { LoopHost } from './host.js';
 import { Learn } from './learn.js';
 import { Lifecycle } from './lifecycle.js';
@@ -147,6 +149,7 @@ export class AgentLoop {
   readonly #media: MediaKeeper;
   readonly #notes: SkillNotes;
   readonly #learn: Learn;
+  readonly #questions: Questions;
 
   constructor(deps: LoopDeps) {
     this.#deps = deps;
@@ -166,6 +169,7 @@ export class AgentLoop {
     this.#media = new MediaKeeper(host, deps);
     this.#notes = new SkillNotes(host, { skills: deps.skills, chat: deps.chat, activeConnection: deps.activeConnection, view: () => this.#view() });
     this.#learn = new Learn(host, deps, stopped);
+    this.#questions = new Questions(host, stopped);
   }
 
   get state(): PanelState {
@@ -173,7 +177,7 @@ export class AgentLoop {
     return { status: s.status, ...(s.pauseReason ? { pauseReason: s.pauseReason } : {}), transcript: s.transcript,
       handedTab: s.handedTab, connection: s.connection ? { label: s.connection.label, model: s.connection.model } : null, actions: s.actions,
       ...(s.approval ? { approval: s.approval } : {}), mode: s.scope.mode, workspace: s.workspace ?? null,
-      ...(s.stepWait ? { stepWait: s.stepWait } : {}), learning: this.#learn.on };
+      ...(s.stepWait ? { stepWait: s.stepWait } : {}), learning: this.#learn.on, ...(s.question ? { question: s.question } : {}) };
   }
 
   /** Learn on or off, from the composer. Off while a step waits lets that step go. */
@@ -185,6 +189,11 @@ export class AgentLoop {
   /** The owner's Next in Learn: the waiting step goes ahead. */
   step(): void {
     this.#learn.next();
+  }
+
+  /** The owner picked options for the agent's question, or skipped it (`null`). */
+  answer(id: string, picked: string[] | null): void {
+    this.#questions.pick(id, picked);
   }
 
   /* ---- approvals: the controller's gate (approvals.ts) ---- */
@@ -233,6 +242,7 @@ export class AgentLoop {
     // A card that was up when the worker died is re-raised by the next check after Resume; a step waiting is raised again too.
     this.#state.approval = undefined;
     this.#state.stepWait = undefined;
+    this.#state.question = undefined;
     if (saved.status !== 'running') return;
     this.#answerDangling('The extension restarted while this action was running. Its outcome is unknown. Observe before acting and do not repeat a submission.');
     this.#life.to('paused');
@@ -261,6 +271,12 @@ export class AgentLoop {
     if (this.#storedChars() + attached > MAX_STATE_CHARS) {
       this.#note(attached > 0 ? TOO_BIG : TOO_LONG);
       await this.#save();
+      return;
+    }
+    // A question is waiting: what the owner typed is their answer. Files and skills sent with it follow, for the next turn.
+    if (this.#questions.open) {
+      this.#questions.type(goal.trim() || 'See what I attached.');
+      if (attachments.length > 0 || skillIds.length > 0) await this.#amend('', text, attachments, skillIds);
       return;
     }
     // Decided before anything awaits: two quick sends can never start two loops on one conversation.
@@ -392,6 +408,7 @@ export class AgentLoop {
     this.#abort?.abort();
     this.#cancel?.cancel();
     this.step();
+    this.#questions.release();
     // A card on screen is answered as Deny: nothing it would have allowed is dispatched.
     if (this.#state.approval) await this.decide(this.#state.approval.id, 'deny');
     if (this.#life.phase === 'paused') await this.#end('Stopped.');
@@ -452,7 +469,7 @@ export class AgentLoop {
           this.#trace.record({ kind: 'model-request', turn, messages: messages.length, chars: JSON.stringify(messages).length });
           const sent = this.#now();
           const answer = await deps.chat({
-            system: SYSTEM_PROMPT, messages, tools: [BROWSER_TOOL, SAVE_FILE_TOOL],
+            system: SYSTEM_PROMPT, messages, tools: [BROWSER_TOOL, SAVE_FILE_TOOL, ASK_TOOL],
             connectionId: connection.id, connectionRevision: connection.revision, model: connection.model, maxTokens,
           }, { signal: this.#abort!.signal });
           this.#trace.record({ kind: 'model-response', turn, ms: this.#now() - sent, ok: answer.ok,
@@ -527,8 +544,13 @@ export class AgentLoop {
   async #runBatch(calls: AIToolCall[], why?: string): Promise<'stopped' | 'paused' | undefined> {
     const s = this.#state;
     let failed = false;
+    let asked = false;
     let terminal: 'stopped' | 'paused' | undefined;
     for (const call of calls) {
+      if (asked) {
+        this.#answer(call, { skipped: 'Not run: you asked the owner a question earlier in this batch. Decide again with their answer.' }, true);
+        continue;
+      }
       if (failed || terminal) {
         this.#answer(call, { skipped: 'An earlier call in this batch failed or paused; nothing was dispatched. Observe and decide again.' }, true);
         continue;
@@ -540,6 +562,11 @@ export class AgentLoop {
           this.#answer(call, { error: `The file could not be kept: ${error instanceof Error ? error.message : String(error)}`, notice: 'No file was made.' }, true);
           failed = true;
         }
+        continue;
+      }
+      if (call.name === ASK_TOOL.name && !call.argsError) {
+        if (await this.#questions.ask(call)) asked = true; else failed = true;
+        if (this.#life.stopRequested) terminal = 'stopped';
         continue;
       }
       if (call.name !== 'browser') {
@@ -641,7 +668,9 @@ export class AgentLoop {
     if (lastAssistant?.role !== 'assistant' || !lastAssistant.toolCalls) return;
     const answered = new Set(history.filter((message) => message.role === 'tool').map((message) => (message as { toolCallId: string }).toolCallId));
     for (const call of lastAssistant.toolCalls) {
-      if (!answered.has(call.id)) this.#answer(call, { completed: 'unknown', error: text, notice: text }, true);
+      if (answered.has(call.id)) continue;
+      if (call.name === ASK_TOOL.name) this.#answer(call, { skipped: 'The extension restarted before the owner answered. Ask again if you still need to.' }, true);
+      else this.#answer(call, { completed: 'unknown', error: text, notice: text }, true);
     }
   }
 

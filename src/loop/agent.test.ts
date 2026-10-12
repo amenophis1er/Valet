@@ -131,7 +131,7 @@ describe('a run', () => {
     expect(h.loop.state.status).toBe('idle');
     expect(h.loop.state.transcript.map((entry) => entry.kind)).toEqual(['owner', 'action', 'action', 'agent']);
     expect(h.loop.state.handedTab).toEqual({ title: 'Shop', url: 'https://shop.test/' });
-    expect(h.requests[0]).toMatchObject({ connectionId: 'c1', connectionRevision: 3, model: 'test-model', tools: [{ name: 'browser' }, { name: 'save_file' }] });
+    expect(h.requests[0]).toMatchObject({ connectionId: 'c1', connectionRevision: 3, model: 'test-model', tools: [{ name: 'browser' }, { name: 'save_file' }, { name: 'ask_owner' }] });
     expect(String(h.requests[0]!.messages[0]!.content)).toContain('You are working in that tab: observe it first.');
     expect(wellFormed(h.saved()!.history)).toBe(true);
   });
@@ -713,7 +713,7 @@ describe('screenshots and files', () => {
     expect(file).toMatchObject({ kind: 'file', name: 'lom- summary.html.txt', mimeType: 'text/plain', bytes: 21 });
     expect(h.media.get((file as { id: string }).id)).toEqual({ kind: 'file', name: 'lom- summary.html.txt', mimeType: 'text/plain', content: 'Lomé is the capital.' });
     expect(h.loop.state.actions).toBe(0);
-    expect(h.requests[0]!.tools!.map((tool) => tool.name)).toEqual(['browser', 'save_file']);
+    expect(h.requests[0]!.tools!.map((tool) => tool.name)).toEqual(['browser', 'save_file', 'ask_owner']);
     const tool = h.requests[1]!.messages.find((message) => message.role === 'tool')!;
     expect(String(tool.content)).toContain('do not say it was downloaded');
   });
@@ -1108,5 +1108,141 @@ describe('the run trace in the loop', () => {
     expect(exported).toContain('"omitted": true');
     await h.loop.newConversation();
     expect((JSON.parse(h.loop.exportTrace()) as { events: unknown[] }).events).toEqual([]);
+  });
+});
+
+describe('questions to the owner (ask_owner)', () => {
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const MUGS = { question: 'Which mug should I add?', options: [{ label: 'Blue mug', hint: '$12.40, ships tomorrow' }, { label: 'Red mug' }, { label: 'Sage mug' }] };
+  /** The result the model got for a call. */
+  const resultFor = (h: ReturnType<typeof harness>, id: string) =>
+    JSON.parse(String(h.saved()!.history.find((message) => message.role === 'tool' && message.toolCallId === id)!.content)) as Record<string, unknown>;
+  async function asked(h: ReturnType<typeof harness>) {
+    while (!h.loop.state.question) await tick();
+    return h.loop.state.question;
+  }
+
+  it('shows the question, waits, and gives the model the pick; the transcript keeps question and answer, and no action is counted', async () => {
+    const h = harness([callTurn({ id: 'q', name: 'ask_owner', args: MUGS })]);
+    const running = h.loop.run('Add a mug to the cart');
+    const question = await asked(h);
+    expect(question).toMatchObject({ question: 'Which mug should I add?', multi: false, options: [{ label: 'Blue mug', hint: '$12.40, ships tomorrow' }, { label: 'Red mug' }, { label: 'Sage mug' }] });
+    expect(h.loop.state.status).toBe('running');
+    h.loop.answer(question.id, ['Red mug']);
+    await running;
+    expect(resultFor(h, 'q')).toEqual({ answer: 'Red mug', picked: ['Red mug'] });
+    expect(h.loop.state.question).toBeUndefined();
+    expect(h.loop.state.actions).toBe(0);
+    expect(h.loop.state.transcript).toEqual(expect.arrayContaining([{ kind: 'agent', text: 'Which mug should I add?' }, { kind: 'owner', text: 'Red mug' }]));
+    expect(wellFormed(h.saved()!.history)).toBe(true);
+  });
+
+  it('takes a message typed while the question is open as the answer, not as a new task', async () => {
+    const h = harness([callTurn({ id: 'q', name: 'ask_owner', args: MUGS })]);
+    const running = h.loop.run('Add a mug');
+    await asked(h);
+    await h.loop.run('  The green one, if they have it  ');
+    await running;
+    expect(resultFor(h, 'q')).toMatchObject({ answer: 'The green one, if they have it', typed: expect.any(String) });
+    expect(h.saved()?.amendments).toBeUndefined();
+    expect(h.loop.state.transcript.filter((entry) => entry.kind === 'owner').map((entry) => (entry as { text: string }).text)).toEqual(['Add a mug', 'The green one, if they have it']);
+  });
+
+  it('Skip tells the model to decide itself', async () => {
+    const h = harness([callTurn({ id: 'q', name: 'ask_owner', args: MUGS })]);
+    const running = h.loop.run('Add a mug');
+    h.loop.answer((await asked(h)).id, null);
+    await running;
+    expect(String(resultFor(h, 'q')['skipped'])).toMatch(/Decide yourself/);
+    expect(h.loop.state.transcript).toContainEqual({ kind: 'notice', text: 'You skipped the question.' });
+  });
+
+  it('several picks for a multi question; options it did not offer, a second pick on a single question, or another question\'s id are ignored', async () => {
+    const h = harness([
+      callTurn({ id: 'q1', name: 'ask_owner', args: MUGS }),
+      callTurn({ id: 'q2', name: 'ask_owner', args: { ...MUGS, question: 'Which ones?', multi: true } }),
+    ]);
+    const running = h.loop.run('Mugs');
+    const first = await asked(h);
+    h.loop.answer(first.id, ['Gold mug']);
+    h.loop.answer(first.id, ['Blue mug', 'Red mug']);
+    h.loop.answer('q-other', ['Blue mug']);
+    await tick();
+    expect(h.loop.state.question?.id).toBe(first.id);
+    h.loop.answer(first.id, ['Blue mug']);
+    while (h.loop.state.question?.id === first.id || !h.loop.state.question) await tick();
+    h.loop.answer(h.loop.state.question.id, ['Sage mug', 'Blue mug']);
+    await running;
+    // In the order offered, whatever the order clicked.
+    expect(resultFor(h, 'q2')).toEqual({ answer: 'Blue mug, Sage mug', picked: ['Blue mug', 'Sage mug'] });
+  });
+
+  it('Stop while a question waits ends the run; the call is answered and nothing after it runs', async () => {
+    const h = harness([callTurn({ id: 'q', name: 'ask_owner', args: MUGS }, { id: 'n', args: { action: 'navigate', url: 'https://shop.test/' } })]);
+    const running = h.loop.run('Add a mug');
+    await asked(h);
+    await h.loop.stop();
+    await running;
+    expect(h.loop.state.status).toBe('idle');
+    expect(h.loop.state.question).toBeUndefined();
+    expect(h.ran).toEqual([]);
+    expect(resultFor(h, 'q')['skipped']).toMatch(/stopped/);
+    expect(wellFormed(h.saved()!.history)).toBe(true);
+  });
+
+  it('skips the rest of a batch after a question: the model decides again with the answer', async () => {
+    const h = harness([callTurn({ id: 'q', name: 'ask_owner', args: MUGS }, { id: 'n', args: { action: 'navigate', url: 'https://shop.test/' } })]);
+    const running = h.loop.run('Add a mug');
+    h.loop.answer((await asked(h)).id, ['Blue mug']);
+    await running;
+    expect(h.ran).toEqual([]);
+    expect(String(resultFor(h, 'n')['skipped'])).toMatch(/asked the owner a question/);
+  });
+
+  it('answers a malformed question with an error and shows nothing', async () => {
+    const h = harness([callTurn({ id: 'q', name: 'ask_owner', args: { question: 'Which?', options: [{ label: 'Only one' }] } })]);
+    await h.loop.run('Add a mug');
+    expect(String(resultFor(h, 'q')['error'])).toMatch(/Invalid ask_owner call — options/);
+    expect(h.states.some((state) => state.question)).toBe(false);
+  });
+
+  it('the time the owner takes to answer does not count against the run', async () => {
+    let clock = 1_000;
+    const h = harness([
+      callTurn({ id: 'q', name: 'ask_owner', args: MUGS }),
+      callTurn({ id: 'o', args: { action: 'observe' } }),
+    ], { now: () => clock });
+    const running = h.loop.run('Add a mug');
+    const question = await asked(h);
+    clock += MAX_RUN_MS + 60_000;
+    h.loop.answer(question.id, ['Blue mug']);
+    await running;
+    // The observe after the answer ran: the run had not hit its time limit.
+    expect(h.loop.state.actions).toBe(1);
+    expect(h.loop.state.transcript.some((entry) => entry.kind === 'notice' && /20 minutes/.test(entry.text))).toBe(false);
+  });
+
+  it('a restart while a question waits pauses the run and tells the model the owner never answered', async () => {
+    const saved: Persisted = {
+      history: [{ role: 'user', content: 'go' }, { role: 'assistant', toolCalls: [{ id: 'q', name: 'ask_owner', args: MUGS }] }],
+      transcript: [{ kind: 'owner', text: 'go' }], status: 'running', actions: 0, startedAt: 0, connection: CONNECTION, handedTab: null,
+      question: { id: 'q-1', question: MUGS.question, options: MUGS.options, multi: false },
+      scope: { mode: 'ask', runOrigins: [], chatOrigins: [], deniedOrigins: [], chatSubmissions: [], deniedSubmissions: [] },
+    };
+    const h = harness([], { saved });
+    await h.loop.restore();
+    expect(h.loop.state.status).toBe('paused');
+    expect(h.loop.state.question).toBeUndefined();
+    expect(resultFor(h, 'q')['skipped']).toMatch(/restarted before the owner answered/);
+  });
+
+  it('records the question and the reply in the trace', async () => {
+    const h = harness([callTurn({ id: 'q', name: 'ask_owner', args: MUGS })]);
+    const running = h.loop.run('Add a mug');
+    h.loop.answer((await asked(h)).id, ['Blue mug']);
+    await running;
+    const events = (JSON.parse(h.loop.exportTrace()) as { events: Array<Record<string, unknown>> }).events;
+    expect(events).toContainEqual(expect.objectContaining({ kind: 'question', question: 'Which mug should I add?', options: ['Blue mug', 'Red mug', 'Sage mug'], multi: false }));
+    expect(events).toContainEqual(expect.objectContaining({ kind: 'reply', reply: 'Blue mug' }));
   });
 });

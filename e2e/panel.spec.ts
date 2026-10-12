@@ -193,7 +193,7 @@ test('runs a goal from the panel: the agent searches the shop and answers', asyn
   expect(model.origins.length).toBeGreaterThan(0);
   expect(model.origins.filter(Boolean)).toEqual([]);
   const first = model.requests[0]!;
-  expect(first.tools).toHaveLength(2);
+  expect(first.tools).toHaveLength(3);
   expect((first as Record<string, unknown>)['parallel_tool_calls']).toBe(false);
   // Every tool call was answered before the next model turn.
   const last = model.requests.at(-1)!.messages;
@@ -839,6 +839,40 @@ test('copies an answer and the whole conversation, and saves it as one HTML file
   expect(html).toMatch(/<img src="data:image\/jpeg;base64,[A-Za-z0-9+/=]{100,}" alt="Took a screenshot">/);
   await shop.close();
   await panel.close();
+});
+
+test('a question from the agent: picked with one click, or answered by typing, and never shown as an approval', async () => {
+  const answerOf = (messages: Array<{ role: string; content?: string | null }>) => String(messages.filter((message) => message.role === 'tool').at(-1)?.content ?? '');
+  model.script([
+    () => ({ tool: 'ask_owner', call: { question: 'Which mug should I look at?', options: [{ label: 'Blue mug', hint: 'The cheapest' }, { label: 'Red mug' }] } }),
+    ({ messages }) => ({ tool: 'ask_owner', call: { question: `Heard ${JSON.parse(answerOf(messages)).answer}. Gift wrap?`, options: [{ label: 'Yes' }, { label: 'No' }] } }),
+    ({ messages }) => ({ text: `Answer: ${JSON.parse(answerOf(messages)).answer}` }),
+  ]);
+  const panel = await openPanel();
+  try {
+    await panel.getByRole('button', { name: 'New conversation' }).click();
+    await panel.locator('#goal').fill('Help me pick a mug');
+    await panel.getByRole('button', { name: 'Send' }).click();
+    const ask = panel.getByRole('group', { name: 'Which mug should I look at?' });
+    await expect(ask).toBeVisible({ timeout: 30_000 });
+    await expect(panel.locator('#card')).toBeHidden();
+    await expect(panel.locator('#status')).toHaveText('Waiting for your answer.');
+    await expect(panel.locator('#goal')).toHaveAttribute('placeholder', 'Type your own answer…');
+    await expect(ask.getByRole('button', { name: /Blue mug.*Suggested.*The cheapest/ })).toBeFocused();
+    await panel.screenshot({ path: test.info().outputPath('question.png') });
+    await ask.getByRole('button', { name: /Red mug/ }).click();
+    // The second question: typed in the message box instead of picked.
+    await expect(panel.getByRole('group', { name: 'Heard Red mug. Gift wrap?' })).toBeVisible({ timeout: 30_000 });
+    await panel.locator('#goal').fill('Only if it is free');
+    await panel.getByRole('button', { name: 'Send' }).click();
+    await expect(panel.locator('.agent').last()).toHaveText('Answer: Only if it is free', { timeout: 30_000 });
+    await expect(panel.locator('#ask')).toBeHidden();
+    await expect(panel.locator('#goal')).not.toHaveAttribute('placeholder', 'Type your own answer…');
+    // The transcript keeps each question with its answer.
+    await expect(panel.locator('#transcript .owner')).toHaveText(['Help me pick a mug', 'Red mug', 'Only if it is free']);
+  } finally {
+    await panel.close();
+  }
 });
 
 test('Learning: each step waits for Next, with the bubble in the page saying what comes and why', async () => {

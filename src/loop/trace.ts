@@ -27,6 +27,8 @@ export type TraceEvent = { at: number } & (
   | { kind: 'card'; card: 'site' | 'form'; origin: string; reason: string }
   | { kind: 'answer'; card: string; decision: string }
   | { kind: 'step-wait'; text: string }
+  | { kind: 'question'; question: string; options: string[]; multi: boolean }
+  | { kind: 'reply'; reply: string }
   | { kind: 'note'; text: string }
 );
 

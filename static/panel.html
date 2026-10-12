@@ -50,6 +50,18 @@
           <button id="card-deny">Deny</button>
         </div>
       </div>
+      <!-- A question from the agent: plain, unlike the approval card, because an answer allows nothing. -->
+      <div id="ask" class="ask" role="group" aria-labelledby="ask-text" hidden>
+        <p class="ask-head"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M9.6 9.4a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.7M12 16.6v.4" /></svg>A question for you</p>
+        <p id="ask-text" class="ask-text"></p>
+        <div id="ask-options" class="ask-options"></div>
+        <div class="row">
+          <small id="ask-hint" class="muted">Or type your own answer below.</small>
+          <span class="spacer"></span>
+          <button id="ask-skip" class="ghost">Skip</button>
+          <button id="ask-send" class="primary" hidden>Send</button>
+        </div>
+      </div>
       <div id="step" class="step-bar" hidden>
         <div class="step-text"><span class="step-lead">Next:</span> <span id="step-text"></span><small id="step-why"></small></div>
         <button id="step-next" class="primary">Next step</button>
