@@ -1140,15 +1140,33 @@ describe('questions to the owner (ask_owner)', () => {
     expect(wellFormed(h.saved()!.history)).toBe(true);
   });
 
-  it('takes a message typed while the question is open as the answer, not as a new task', async () => {
+  it('takes the owner\'s own words for that question as the answer; words for another question are ignored', async () => {
     const h = harness([callTurn({ id: 'q', name: 'ask_owner', args: MUGS })]);
     const running = h.loop.run('Add a mug');
-    await asked(h);
-    await h.loop.run('  The green one, if they have it  ');
+    const question = await asked(h);
+    h.loop.answerText('q-closed', 'The blue one');
+    await tick();
+    expect(h.loop.state.question?.id).toBe(question.id);
+    h.loop.answerText(question.id, '  The green one, if they have it  ');
     await running;
     expect(resultFor(h, 'q')).toMatchObject({ answer: 'The green one, if they have it', typed: expect.any(String) });
     expect(h.saved()?.amendments).toBeUndefined();
     expect(h.loop.state.transcript.filter((entry) => entry.kind === 'owner').map((entry) => (entry as { text: string }).text)).toEqual(['Add a mug', 'The green one, if they have it']);
+  });
+
+  it('a question ended by Stop stays in the conversation, marked unanswered', async () => {
+    const h = harness([callTurn({ id: 'q', name: 'ask_owner', args: MUGS })]);
+    const running = h.loop.run('Add a mug');
+    await asked(h);
+    await h.loop.stop();
+    await running;
+    expect(h.loop.state.transcript).toEqual(expect.arrayContaining([{ kind: 'agent', text: 'Which mug should I add?' }, { kind: 'notice', text: 'The question was not answered.' }]));
+  });
+
+  it('ask_owner with arguments that are not valid JSON is told so, not that the tool does not exist', async () => {
+    const h = harness([() => ({ ok: true, text: '', stopReason: 'tool_use', toolCalls: [{ id: 'q', name: 'ask_owner', args: {}, argsError: { message: 'Unexpected end of JSON input', raw: '{"question":' } }] })]);
+    await h.loop.run('Add a mug');
+    expect(String(resultFor(h, 'q')['error'])).toMatch(/not valid JSON/);
   });
 
   it('Skip tells the model to decide itself', async () => {
@@ -1262,6 +1280,20 @@ describe('steps as they happen', () => {
     expect(actions(h.loop.state)).toEqual([expect.objectContaining({ text: 'Opened https://shop.test/', outcome: 'ok' })]);
   });
 
+  it('a run cut short mid-step leaves no step under way and no call without its result', async () => {
+    let h: ReturnType<typeof harness>;
+    h = harness([
+      (request, signal) => { h.failSave(true); return callTurn({ id: 'n', args: { action: 'navigate', url: 'https://shop.test/' } })(request, signal); },
+      () => ({ ok: true, text: 'Done.', stopReason: 'end' }),
+    ]);
+    await h.loop.run('Open the shop', undefined, true);
+    expect(h.loop.state.status).toBe('idle');
+    expect(h.loop.state.transcript.some((entry) => entry.kind === 'action' && entry.outcome === 'pending')).toBe(false);
+    h.failSave(false);
+    await h.loop.run('Again');
+    expect(wellFormed(h.saved()!.history)).toBe(true);
+  });
+
   it('a step still under way when the worker died is shown as uncertain after the restart', async () => {
     const saved: Persisted = {
       history: [{ role: 'user', content: 'go' }, { role: 'assistant', toolCalls: [{ id: 'x1', name: 'browser', args: { action: 'click' } }] }],
@@ -1296,10 +1328,27 @@ describe('run limits and Continue', () => {
     expect(h.loop.state.actions).toBe(100);
     expect(h.loop.state.atLimit).toBe(true);
     expect(h.loop.state.transcript.at(-1)).toMatchObject({ kind: 'notice', text: expect.stringMatching(/^Stopped after 100 browser actions.*Continue to go on/) });
-    await h.loop.run('Continue');
+    await h.loop.continueRun();
     expect(h.loop.state.atLimit).toBeUndefined();
     // The fresh stretch ran the rest, then the model answered.
     expect(h.loop.state.transcript.at(-1)).toMatchObject({ kind: 'agent', text: 'Carried on.' });
+  });
+
+  it('Continue keeps the request\'s one-time approvals and refusals; a new message starts them over', async () => {
+    const scope = { mode: 'ask' as const, runOrigins: ['https://a.test'], chatOrigins: [], deniedOrigins: ['https://b.test'], chatSubmissions: [], deniedSubmissions: [] };
+    const saved: Persisted = {
+      history: [{ role: 'user', content: 'go' }, { role: 'assistant', content: 'Stopped.' }],
+      transcript: [{ kind: 'owner', text: 'go' }], status: 'idle', actions: 40, startedAt: 0, connection: CONNECTION, handedTab: null, scope, atLimit: true,
+    };
+    const h = harness([() => ({ ok: true, text: 'Carried on.', stopReason: 'end' }), () => ({ ok: true, text: 'New one.', stopReason: 'end' })], { saved });
+    await h.loop.restore();
+    await h.loop.continueRun();
+    expect(h.saved()?.scope).toMatchObject({ runOrigins: ['https://a.test'], deniedOrigins: ['https://b.test'] });
+    // Offered once: with no limit reached, Continue does nothing.
+    await h.loop.continueRun();
+    expect(h.requests.length).toBe(1);
+    await h.loop.run('Something else');
+    expect(h.saved()?.scope).toMatchObject({ runOrigins: [], deniedOrigins: [] });
   });
 
   it('the time limit follows the setting too', async () => {

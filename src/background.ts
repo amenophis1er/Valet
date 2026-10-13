@@ -363,7 +363,10 @@ async function handle(conversation: Conversation, port: Port, intent: PanelInten
     case 'decide': void loop.decide(intent.id, intent.decision); return;
     case 'set-mode': void loop.setMode(intent.mode); return;
     case 'step': loop.step(); return;
-    case 'answer': loop.answer(intent.id, intent.skip ? null : intent.picked ?? []); return;
+    case 'answer':
+      if (intent.text !== undefined) loop.answerText(intent.id, intent.text); else loop.answer(intent.id, intent.skip ? null : intent.picked ?? []);
+      return;
+    case 'continue': void loop.continueRun(); return;
     case 'set-learning': void loop.setLearning(intent.on); return;
     case 'export-trace': port.postMessage({ type: 'trace', requestId: intent.requestId, json: loop.exportTrace() } satisfies WorkerMessage); return;
     case 'capture-tab': {

@@ -14,7 +14,7 @@ import { grabFrame } from './share.js';
 import { dictation as attachDictation, onDeviceModel, type ModelState } from './dictation/index.js';
 import { MAX_ATTACHMENTS, checkAttachments, type Attachment } from './loop/attachments.js';
 import { AI_PREFIX, HEARTBEAT_MS, LIMIT_KEY, MEDIA_PREFIX, PACE_KEY, PANEL_PORT, RUN_LIMITS, conversationForTab, runLimit, panelPortName, type Media, type PanelIntent, type PanelState, type WorkerMessage } from './loop/protocol.js';
-import { conversationHtml, conversationMarkdown } from './export.js';
+import { conversationHtml, conversationMarkdown, stepText } from './export.js';
 import { MAX_SKILL_CHARS, exportSkills, importSkills, loadSkills, newSkillId, parseSites, removeSkill, saveSkill, validateSkill, type Skill } from './skills/skills.js';
 
 interface TabInfo { id?: number; url?: string; title?: string; windowId?: number }
@@ -475,13 +475,6 @@ function dots(): HTMLElement {
   return holder;
 }
 
-/** A step as its row says it: done, under way (…), or what went wrong. */
-function stepText(entry: StepEntry): string {
-  if (entry.outcome === 'ok') return entry.text;
-  if (entry.outcome === 'pending') return `${entry.text}…`;
-  return `${entry.text} — ${entry.outcome}`;
-}
-
 /** One step as a quiet row; its outcome and detail open on click. */
 function stepRow(entry: StepEntry, withImage: boolean): HTMLLIElement {
   const item = document.createElement('li');
@@ -661,7 +654,9 @@ function renderQuestion(): void {
       button.setAttribute('aria-pressed', String(askPicked.has(option.label)));
       button.onclick = () => {
         if (askPicked.has(option.label)) askPicked.delete(option.label); else askPicked.add(option.label);
-        renderQuestion();
+        // Updated in place, so the button keeps keyboard focus.
+        button.setAttribute('aria-pressed', String(askPicked.has(option.label)));
+        $<HTMLButtonElement>('ask-send').disabled = askPicked.size === 0;
       };
     } else {
       button.onclick = () => send({ type: 'answer', id: question.id, picked: [option.label] });
@@ -689,7 +684,7 @@ function sendOwnAnswer(): void {
   const input = $<HTMLTextAreaElement>('ask-input');
   const text = input.value.trim();
   if (!text || !state?.question) return;
-  send({ type: 'run', goal: text });
+  send({ type: 'answer', id: state.question.id, text });
   input.value = '';
 }
 
@@ -1095,7 +1090,7 @@ function continueRow(): HTMLLIElement {
   button.type = 'button';
   button.className = 'primary';
   button.textContent = 'Continue';
-  button.onclick = () => { button.disabled = true; send({ type: 'run', goal: 'Continue' }); };
+  button.onclick = () => { button.disabled = true; send({ type: 'continue' }); };
   item.append(button);
   return item;
 }

@@ -132,9 +132,10 @@ export class Questions {
     if ('picked' in reply || 'text' in reply) {
       state.transcript.push({ kind: 'agent', text: question.question });
       state.transcript.push({ kind: 'owner', text: 'picked' in reply ? reply.picked.join(', ') : reply.text });
-    } else if ('skipped' in reply) {
+    } else {
+      // Skipped or stopped, the question stays in the conversation with what became of it.
       state.transcript.push({ kind: 'agent', text: question.question });
-      this.#host.note('You skipped the question.');
+      this.#host.note('skipped' in reply ? 'You skipped the question.' : 'The question was not answered.');
     }
     this.#host.trace({ kind: 'reply', reply: 'picked' in reply ? reply.picked.join(', ') : 'text' in reply ? reply.text : 'skipped' in reply ? '(skipped)' : '(stopped)' });
     const { result, isError } = resultOf(reply);
@@ -154,9 +155,9 @@ export class Questions {
     this.#reply.answer({ picked: chosen });
   }
 
-  /** The owner typed their answer in the message box. */
-  type(text: string): void {
-    if (!this.open || !text.trim()) return;
+  /** The owner typed their own answer to this question. An answer to any other question is ignored. */
+  type(id: string, text: string): void {
+    if (this.#host.state().question?.id !== id || !this.open || !text.trim()) return;
     this.#reply.answer({ text: text.trim() });
   }
 

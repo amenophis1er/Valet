@@ -203,6 +203,11 @@ export class AgentLoop {
     this.#questions.pick(id, picked);
   }
 
+  /** The owner's own words for the question `id` ("Something else…"). */
+  answerText(id: string, text: string): void {
+    this.#questions.type(id, text);
+  }
+
   /* ---- approvals: the controller's gate (approvals.ts) ---- */
 
   verdict(origin: string): Verdict { return this.#approvals.verdict(origin); }
@@ -282,12 +287,6 @@ export class AgentLoop {
       await this.#save();
       return;
     }
-    // A question is waiting: what the owner typed is their answer. Files and skills sent with it follow, for the next turn.
-    if (this.#questions.open) {
-      this.#questions.type(goal.trim() || 'See what I attached.');
-      if (attachments.length > 0 || skillIds.length > 0) await this.#amend('', text, attachments, skillIds);
-      return;
-    }
     // Decided before anything awaits: two quick sends can never start two loops on one conversation.
     if (this.#life.busy) return this.#amend(goal, text, attachments, skillIds);
     if (this.#life.phase === 'paused') {
@@ -304,6 +303,8 @@ export class AgentLoop {
   /** Through `starting`: the run goes, or — if it could not start — back to where it was. */
   async #starting(from: 'idle' | 'paused', body: () => Promise<void>): Promise<void> {
     this.#life.to('starting');
+    // Continue is offered only until something starts.
+    this.#state.atLimit = undefined;
     try {
       await body();
     } finally {
@@ -322,7 +323,8 @@ export class AgentLoop {
     await this.#save();
   }
 
-  async #start(goal: string, text: string, tabId: number | undefined, useNewTab: boolean, attachments: Attachment[], skillIds: string[]): Promise<void> {
+  /** `carryOn`: Continue after a limit, the same request going on, its one-request approvals and refusals kept. */
+  async #start(goal: string, text: string, tabId: number | undefined, useNewTab: boolean, attachments: Attachment[], skillIds: string[], carryOn = false): Promise<void> {
     // Shown before anything awaits, so a message sent right after this one lands below it; its attachments are filled in once kept.
     const entry: Extract<TranscriptEntry, { kind: 'owner' }> = { kind: 'owner', text: goal.trim() };
     this.#state.transcript.push(entry);
@@ -357,7 +359,7 @@ export class AgentLoop {
     s.handedTab = handed;
     // A new request keeps the conversation's approvals; its one-request ones start over, with the page the owner handed over.
     const firstRequest = s.history.length === 0;
-    s.scope = nextRun(s.scope);
+    if (!carryOn) s.scope = nextRun(s.scope);
     // The page it starts on is allowed for this request: the one handed over, or the one it continues in.
     const startOrigin = originOf((continuing ? here?.url : handed?.url) ?? '');
     if (startOrigin && verdict(startOrigin, s.scope) !== 'allowed') s.scope = decide(s.scope, startOrigin, 'once');
@@ -391,6 +393,13 @@ export class AgentLoop {
       return;
     }
     this.#running = this.#loop();
+  }
+
+  /** Continue after the run stopped at its limit: the request goes on where it was, as the owner's "Continue". */
+  async continueRun(): Promise<void> {
+    if (this.#life.phase !== 'idle' || !this.#state.atLimit) return;
+    await this.#starting('idle', () => this.#start('Continue', 'Continue', undefined, false, [], [], true));
+    return this.#running;
   }
 
   /** Continue a paused run: the controller asks for a fresh observation first. */
@@ -573,7 +582,12 @@ export class AgentLoop {
         this.#answer(call, { skipped: 'An earlier call in this batch failed or paused; nothing was dispatched. Observe and decide again.' }, true);
         continue;
       }
-      if (call.name === 'save_file' && !call.argsError) {
+      if (call.argsError) {
+        this.#answer(call, { error: `The arguments were not valid JSON: ${call.argsError.message}`, notice: 'Nothing was dispatched.' }, true);
+        failed = true;
+        continue;
+      }
+      if (call.name === 'save_file') {
         try {
           await this.#media.saveFile(call);
         } catch (error) {
@@ -582,18 +596,13 @@ export class AgentLoop {
         }
         continue;
       }
-      if (call.name === ASK_TOOL.name && !call.argsError) {
+      if (call.name === ASK_TOOL.name) {
         if (await this.#questions.ask(call)) asked = true; else failed = true;
         if (this.#life.stopRequested) terminal = 'stopped';
         continue;
       }
       if (call.name !== 'browser') {
         this.#answer(call, { error: `There is no tool named ${call.name}.`, notice: 'Nothing was dispatched.' }, true);
-        failed = true;
-        continue;
-      }
-      if (call.argsError) {
-        this.#answer(call, { error: `The arguments were not valid JSON: ${call.argsError.message}`, notice: 'Nothing was dispatched.' }, true);
         failed = true;
         continue;
       }
@@ -701,7 +710,16 @@ export class AgentLoop {
     this.#state.history.push({ role: 'tool', toolCallId: call.id, name: call.name, content: JSON.stringify(result), ...(isError ? { isError: true } : {}) });
   }
 
-  /** After a restart: any call of the last model turn without a result gets "outcome unknown". */
+  /**
+   * A run that ends or pauses mid-step (a throw, a refused save) leaves no call
+   * without its result and no step shown as under way: both become "unknown".
+   */
+  #settleLeftovers(): void {
+    this.#answerDangling('The run ended while this action was going. Its outcome is unknown. Observe before acting and do not repeat a submission.');
+    for (const entry of this.#state.transcript) if (entry.kind === 'action' && entry.outcome === 'pending') entry.outcome = 'unknown';
+  }
+
+  /** Any call of the last model turn without a result gets "outcome unknown" (after a restart, or a run cut short). */
   #answerDangling(text: string): void {
     const history = this.#state.history;
     const lastAssistant = [...history].reverse().find((message) => message.role === 'assistant');
@@ -749,6 +767,7 @@ export class AgentLoop {
   }
 
   async #pause(reason: string): Promise<void> {
+    this.#settleLeftovers();
     this.#life.to('paused');
     this.#state.pauseReason = reason;
     await this.#learn.clear();
@@ -774,6 +793,7 @@ export class AgentLoop {
 
   /** `atLimit`: the run stopped at its limit of actions or time, and the panel offers Continue. */
   async #end(notice?: string, atLimit = false): Promise<void> {
+    this.#settleLeftovers();
     if (notice) this.#note(notice);
     if (atLimit) this.#state.atLimit = true;
     this.#life.to('idle');

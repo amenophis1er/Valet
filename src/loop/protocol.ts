@@ -76,7 +76,9 @@ export type PanelIntent =
   /** Turn Auto on or off for this conversation (and the next one's start). */
   | { type: 'set-mode'; mode: 'ask' | 'auto' }
   /** The owner's answer to a question from the agent: the options picked, or `skip`. A typed answer comes as a `run`. */
-  | { type: 'answer'; id: string; picked?: string[]; skip?: boolean }
+  | { type: 'answer'; id: string; picked?: string[]; skip?: boolean; /** "Something else…": the owner's own words. */ text?: string }
+  /** After a run stopped at its limit: the same request goes on. */
+  | { type: 'continue' }
   /** Learning: let the step the agent is waiting with go ahead. */
   | { type: 'step' }
   /** Learning on or off, from the composer; kept for the next conversation too. */
