@@ -22,6 +22,7 @@ import { installProviderRules } from './scope/provider-rules.js';
 import { Containment, type DnrLike } from './scope/containment.js';
 import { originOf } from './scope/scope.js';
 import { loadSkills } from './skills/skills.js';
+import { KeepAlive } from './keepalive.js';
 
 interface Port {
   name: string;
@@ -49,6 +50,8 @@ declare const chrome: WorkerChrome & {
     onInstalled: { addListener(listener: (details: { reason: string }) => void): void };
     onMessage: { addListener(listener: (message: { type?: string }, sender: { id?: string; tab?: { id?: number } }, respond: (response: unknown) => void) => boolean | undefined): void };
     onConnect: { addListener(listener: (port: Port) => void): void };
+    /** Any extension API call resets Chrome's idle timer for the worker (keepalive.ts). */
+    getPlatformInfo(): Promise<unknown>;
   };
   storage: {
     session: { get(key: string): Promise<Record<string, unknown>>; set(items: Record<string, unknown>): Promise<void>; remove(keys: string[]): Promise<void> };
@@ -192,6 +195,8 @@ interface Conversation { id: string; loop: AgentLoop; controller: RunController;
 
 const conversations = new Map<string, Conversation>();
 const opening = new Map<string, Promise<Conversation>>();
+/** Pings while any conversation runs, so the worker outlives a closed panel (keepalive.ts). */
+const keepAlive = new KeepAlive(() => { void chrome.runtime.getPlatformInfo().catch(() => undefined); });
 /** The conversations that exist, so a restarted worker restores each (chrome.storage.session). */
 const INDEX_KEY = 'agent:conversations';
 const stateKey = (id: string) => `agent:conversation:${id}`;
@@ -273,6 +278,7 @@ function make(id: string): Conversation {
     preview: (args) => conversation.controller.preview(args),
     note: (note) => executor.note(id, note),
     emit: (state) => {
+      keepAlive.want(id, state.status === 'running');
       const message: WorkerMessage = { type: 'state', state };
       for (const port of conversation.ports) port.postMessage(message);
     },
@@ -310,6 +316,7 @@ async function close(id: string): Promise<void> {
   executor.drop(id);
   await containment.clear(id).catch(() => undefined);
   conversations.delete(id);
+  keepAlive.want(id, false);
   await chrome.storage.session.remove([`agent:draft:${id}`]).catch(() => undefined);
   await updateIndex((ids) => ids.filter((other) => other !== id)).catch(() => undefined);
 }
