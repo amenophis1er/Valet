@@ -23,13 +23,14 @@ import { Cancellation } from '../executor/protocol.js';
 import { targetInTree } from '../controller/observation.js';
 import { SYSTEM_PROMPT, goalMessage, historyView } from './prompt.js';
 import { decide, newScope, nextRun, originOf, reachable, verdict, type Decision, type Mode, type SubmitTarget, type Verdict } from '../scope/scope.js';
-import { RUN_LIMITS, type Media, type PanelState, type RunLimit, type TranscriptEntry } from './protocol.js';
+import { DEFAULT_LIMIT, type Media, type PanelState, type RunLimit, type TranscriptEntry } from './protocol.js';
 import { SAVE_FILE_TOOL } from './files.js';
 import { attachmentParts, checkAttachments, type Attachment } from './attachments.js';
 import type { Skill } from '../skills/skills.js';
 import type { Note } from '../executor/commands.js';
 import { Approvals } from './approvals.js';
 import { ASK_TOOL, Questions } from './ask.js';
+import { NOTEPAD_TOOL, withNotepad, writeNote } from './notepad.js';
 import type { LoopHost } from './host.js';
 import { Learn } from './learn.js';
 import { Lifecycle } from './lifecycle.js';
@@ -43,8 +44,8 @@ export type { Connection, Persisted } from './state.js';
 export { DRAFT_CHARS, trimDraft, type SkillDraft } from './skill-notes.js';
 
 /** The default run limits (Settings → Check in after can raise them; protocol.ts). */
-export const MAX_ACTIONS: number = RUN_LIMITS[0].actions;
-export const MAX_RUN_MS: number = RUN_LIMITS[0].minutes * 60_000;
+export const MAX_ACTIONS: number = DEFAULT_LIMIT.actions;
+export const MAX_RUN_MS: number = DEFAULT_LIMIT.minutes * 60_000;
 /** Waits before sending a model request again after a dropped connection or a server failure. */
 const RETRY_DELAYS_MS = [2_000, 5_000];
 /** The output cap of a model turn, and the one a turn gets after a reply was cut off at it. */
@@ -184,7 +185,7 @@ export class AgentLoop {
       handedTab: s.handedTab, connection: s.connection ? { label: s.connection.label, model: s.connection.model } : null, actions: s.actions,
       ...(s.approval ? { approval: s.approval } : {}), mode: s.scope.mode, workspace: s.workspace ?? null,
       ...(s.stepWait ? { stepWait: s.stepWait } : {}), learning: this.#learn.on, ...(s.question ? { question: s.question } : {}),
-      ...(s.atLimit ? { atLimit: true } : {}) };
+      ...(s.atLimit ? { atLimit: true } : {}), ...(s.notepad ? { notepad: s.notepad } : {}) };
   }
 
   /** Learn on or off, from the composer. Off while a step waits lets that step go. */
@@ -496,7 +497,7 @@ export class AgentLoop {
           this.#trace.record({ kind: 'model-request', turn, messages: messages.length, chars: JSON.stringify(messages).length });
           const sent = this.#now();
           const answer = await deps.chat({
-            system: SYSTEM_PROMPT, messages, tools: [BROWSER_TOOL, SAVE_FILE_TOOL, ASK_TOOL],
+            system: SYSTEM_PROMPT, messages, tools: [BROWSER_TOOL, SAVE_FILE_TOOL, ASK_TOOL, NOTEPAD_TOOL],
             connectionId: connection.id, connectionRevision: connection.revision, model: connection.model, maxTokens,
           }, { signal: this.#abort!.signal });
           this.#trace.record({ kind: 'model-response', turn, ms: this.#now() - sent, ok: answer.ok,
@@ -601,6 +602,19 @@ export class AgentLoop {
         if (this.#life.stopRequested) terminal = 'stopped';
         continue;
       }
+      if (call.name === NOTEPAD_TOOL.name) {
+        const written = writeNote(s.notepad ?? '', call.args);
+        if ('error' in written) {
+          this.#answer(call, { error: written.error, notice: 'The notepad was not changed.' }, true);
+          failed = true;
+          continue;
+        }
+        if (written.notepad) s.notepad = written.notepad; else delete s.notepad;
+        s.transcript.push({ kind: 'action', text: written.step, outcome: 'ok' });
+        this.#answer(call, written.result, false);
+        await this.#save();
+        continue;
+      }
       if (call.name !== 'browser') {
         this.#answer(call, { error: `There is no tool named ${call.name}.`, notice: 'Nothing was dispatched.' }, true);
         failed = true;
@@ -691,7 +705,7 @@ export class AgentLoop {
 
   /** What the model sees: old page evidence compacted, and no images for a model that cannot take them. */
   #view(): AIMessage[] {
-    const view = historyView(this.#state.history);
+    const view = withNotepad(historyView(this.#state.history), this.#state.notepad);
     return this.#state.noVision ? view.map(withoutImages) : view;
   }
 

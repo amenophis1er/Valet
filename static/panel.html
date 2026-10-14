@@ -21,6 +21,7 @@
     </button>
     <div id="more-menu" class="menu top-menu" role="menu" aria-label="Conversation" hidden>
       <button role="menuitem" id="menu-save-skill"><span class="title">Save as skill</span><small>A note from this conversation the agent reads next time</small></button>
+      <button role="menuitem" id="open-notepad"><span class="title">Agent's notepad</span><small id="notepad-hint">What the agent noted while it worked</small></button>
       <button role="menuitem" id="copy-conversation"><span class="title">Copy conversation</span><small>As Markdown, steps included</small></button>
       <button role="menuitem" id="save-conversation"><span class="title">Save as HTML</span><small>One file with the screenshots, any length; print it if you like</small></button>
       <button role="menuitem" id="save-trace"><span class="title">Save run trace</span><small>For diagnosing a run: every model turn, action and answer. Holds what the agent read and typed.</small></button>
@@ -129,6 +130,17 @@
       <button id="lightbox-download" class="primary">Download</button>
       <span class="spacer"></span>
       <button id="lightbox-close">Close</button>
+    </div>
+  </dialog>
+
+  <dialog id="notepad" class="lightbox notepad" aria-labelledby="notepad-title">
+    <h2 id="notepad-title">Agent's notepad</h2>
+    <p class="muted hint">What the agent wrote down for this conversation, to work from instead of opening pages again. It goes with the conversation.</p>
+    <pre id="notepad-text"></pre>
+    <div class="row">
+      <button id="notepad-copy" class="primary">Copy</button>
+      <span class="spacer"></span>
+      <button id="notepad-close">Close</button>
     </div>
   </dialog>
 

@@ -11,7 +11,7 @@ const parsed = (message: AIMessage) => JSON.parse(String(message.content)) as Re
 describe('the history the model reads', () => {
   it('keeps the three newest observations in full, older ones as url and title', () => {
     const view = historyView(['a', 'b', 'c', 'd'].map(observed));
-    expect(parsed(view[0]!)['observation']).toEqual({ url: 'https://example.test/', title: 'Example', compacted: true });
+    expect(parsed(view[0]!)['observation']).toEqual({ url: 'https://example.test/', title: 'Example', compacted: expect.stringMatching(/no longer shown.*Work from your notepad/) });
     for (const message of view.slice(1)) expect(parsed(message)['observation']!['tree']).toMatch(/^tree /);
   });
 
@@ -36,5 +36,35 @@ describe('the history the model reads', () => {
     const view = historyView([observed('o1'), read('r1', 1), read('r2', 2), read('r3', 3), read('r4', 4), read('r5', 5)]);
     expect(parsed(view[0]!)['observation']!['tree']).toBe('tree o1');
     expect(parsed(view[1]!)['read']!['text']).toBe('text of part 1');
+  });
+
+  describe('a page opened again and again', () => {
+    const call = (id: string, args: Record<string, unknown>): AIMessage => ({ role: 'assistant', content: '', toolCalls: [{ id, name: 'browser', args }] });
+    const visit = (id: string, url: string): AIMessage[] => [call(id, { action: 'navigate', url }), tool(id, { completed: true, observation: { id, url, title: 'Book', tree: `tree ${id}` } })];
+    const books = ['a', 'b', 'c', 'd', 'e'].map((book) => `https://books.test/${book}/index.html`);
+    const revisited = (message: AIMessage) => parsed(message)['revisited'] as unknown as string | undefined;
+
+    it('says so from the third time: the model is told to work from its notes', () => {
+      const history = [...books, ...books, ...books].flatMap((url, i) => visit(`n${i}`, url));
+      const view = historyView(history);
+      const results = view.filter((message) => message.role === 'tool');
+      expect(results.slice(0, 10).map(revisited)).toEqual(Array(10).fill(undefined));
+      expect(revisited(results[10]!)).toMatch(/opened this page 3 times.*notepad/);
+      expect(results.slice(10).every((message) => revisited(message) !== undefined)).toBe(true);
+    });
+
+    it('counts the same page with a #fragment or a trailing slash as one, and never an observe of the page it is on', () => {
+      const observe = (id: string): AIMessage[] => [call(id, { action: 'observe' }), tool(id, { completed: true, observation: { id, url: 'https://books.test/a', title: 'Book', tree: 't' } })];
+      const view = historyView([...visit('n1', 'https://books.test/a'), ...observe('o1'), ...observe('o2'), ...visit('n2', 'https://books.test/a/'), ...visit('n3', 'https://books.test/a#reviews')]);
+      expect(view.filter((message) => message.role === 'tool').map(revisited).map(Boolean)).toEqual([false, false, false, false, true]);
+    });
+
+    it('leaves what came before as it was when the conversation grows, so the provider\'s cache still holds it', () => {
+      const history = [...books, ...books, ...books].flatMap((url, i) => visit(`n${i}`, url));
+      const before = historyView(history.slice(0, 24));
+      const after = historyView(history);
+      // Past the newest few pages, which are compacted as newer ones arrive.
+      expect(after.slice(0, 18)).toEqual(before.slice(0, 18));
+    });
   });
 });
