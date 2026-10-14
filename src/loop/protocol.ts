@@ -36,6 +36,19 @@ export const PACE_KEY = 'agent:pace';
 export const LEARNING_KEY = 'agent:learning';
 /** The last approval mode, in chrome.storage.local: the next conversation starts in it. */
 export const MODE_KEY = 'agent:mode';
+/** How long a run goes before it checks in with the owner, in chrome.storage.local: a number of actions from RUN_LIMITS. */
+export const LIMIT_KEY = 'agent:limit';
+
+/**
+ * The run limits the owner can pick (Settings → Check in after). There is a
+ * ceiling on purpose: a run that loops, or that a page steers, still stops.
+ */
+export const RUN_LIMITS = [{ actions: 40, minutes: 20 }, { actions: 100, minutes: 45 }, { actions: 200, minutes: 90 }] as const;
+export type RunLimit = (typeof RUN_LIMITS)[number];
+/** The stored choice, or the first (the default) for anything else. */
+export function runLimit(stored: unknown): RunLimit {
+  return RUN_LIMITS.find((limit) => limit.actions === stored) ?? RUN_LIMITS[0];
+}
 
 /** What is stored under a media key. */
 export type Media =
@@ -62,6 +75,10 @@ export type PanelIntent =
   | { type: 'decide'; id: string; decision: 'once' | 'chat' | 'auto' | 'deny' }
   /** Turn Auto on or off for this conversation (and the next one's start). */
   | { type: 'set-mode'; mode: 'ask' | 'auto' }
+  /** The owner's answer to a question from the agent: the options picked, or `skip`. A typed answer comes as a `run`. */
+  | { type: 'answer'; id: string; picked?: string[]; skip?: boolean; /** "Something else…": the owner's own words. */ text?: string }
+  /** After a run stopped at its limit: the same request goes on. */
+  | { type: 'continue' }
   /** Learning: let the step the agent is waiting with go ahead. */
   | { type: 'step' }
   /** Learning on or off, from the composer; kept for the next conversation too. */
@@ -75,7 +92,8 @@ export type RunStatus = 'idle' | 'running' | 'paused';
 export type TranscriptEntry =
   | { kind: 'owner'; text: string; attachments?: OwnerAttachment[] }
   | { kind: 'agent'; text: string }
-  | { kind: 'action'; text: string; outcome: 'ok' | 'refused' | 'unknown' | 'error' | 'skipped'; detail?: string;
+  /** `pending`: the step has started and its result is not back yet; the row is updated in place when it is. */
+  | { kind: 'action'; text: string; outcome: 'pending' | 'ok' | 'refused' | 'unknown' | 'error' | 'skipped'; detail?: string;
       /** A screenshot the action took; `expired` once only the newest ones are kept. */
       image?: { id: string; width: number; height: number; bytes?: number; expired?: boolean } }
   /** A file the agent made for the owner to download. */
@@ -99,6 +117,19 @@ export interface PanelState {
   stepWait?: { text: string; why?: string };
   /** Learning is on: each step is explained and waits for Next. */
   learning: boolean;
+  /** A question from the agent, waiting for the owner's pick (ask.ts). */
+  question?: Question;
+  /** The last run stopped at its limit of actions or time: the panel offers Continue. */
+  atLimit?: boolean;
+}
+
+/** A question the agent asked with `ask_owner`. Its words are the model's, and may come from a page: never an approval. */
+export interface Question {
+  id: string;
+  question: string;
+  /** The first is the one the agent recommends. */
+  options: Array<{ label: string; hint?: string }>;
+  multi: boolean;
 }
 
 export interface Approval {

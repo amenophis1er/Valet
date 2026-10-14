@@ -57,6 +57,11 @@ companion app.
 - **Work at your pace** — *Fast* does each action at once; *Natural* types
   letter by letter, moves the mouse smoothly and pauses between steps, so you
   can follow along (Settings → Pace).
+- **Ask you, quickly** — when only you can choose (which of three matching
+  items, which account), it asks with a few options you pick with one click,
+  the one it suggests first. Type your own answer instead, or Skip to let it
+  decide. A question never allows anything: sites and forms keep their own
+  cards.
 - **Learn** — a toggle in the message box: one step at a time. Before each
   action the agent points at where it will go, says in a bubble what it will
   do and why, and waits for you to press Next — in the bubble or in the panel.
@@ -94,8 +99,9 @@ enforces the rules:
 - **Hard limits.** The agent never types into password fields, never runs
   code in pages, and never follows instructions found in page content. Sign-ins,
   CAPTCHAs and MFA are handed to you.
-- **Budgets.** At most 40 browser actions and 20 minutes per run; Stop always
-  works.
+- **Budgets.** A run stops for you after 40 browser actions or 20 minutes —
+  100/45 or 200/90 if you choose (Settings → Check in after); **Continue**
+  picks it up in one click. There is no unlimited setting. Stop always works.
 
 ## Permissions
 

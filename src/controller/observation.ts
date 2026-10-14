@@ -50,3 +50,14 @@ export function boundObservation(observation: Observation, limit = MAX_OBSERVATI
     targets: [], tabs: [], capturedAt: observation.capturedAt,
   };
 }
+
+/**
+ * A ref's role and name read back from its line in the tree (`- link "Blue mug" [ref=e84]`).
+ * On a large page the bound drops targets from the list while the tree keeps
+ * their lines, so a step on one of them can still be named for the owner.
+ */
+export function targetInTree(tree: string, ref: string): { ref: string; role: string; name: string } | undefined {
+  const line = tree.split('\n').find((candidate) => candidate.includes(`[ref=${ref}]`));
+  const match = line ? /^\s*-\s+([\w-]+)(?:\s+"([^"]*)")?/.exec(line) : null;
+  return match ? { ref, role: match[1]!, name: match[2] ?? '' } : undefined;
+}

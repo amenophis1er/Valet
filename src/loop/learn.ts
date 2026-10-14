@@ -43,10 +43,12 @@ export class Learn {
     this.#next.answer();
   }
 
-  /** Learn on or off. Off while a step waits lets that step go. */
+  /** Learn on or off. Off lets a waiting step go and takes the bubble out of the page at once. */
   async set(on: boolean): Promise<void> {
     await this.#deps.learning.set(on);
-    if (!on) this.next();
+    if (on) return;
+    this.next();
+    if (this.#noted) await this.clear();
   }
 
   /** Before an action: show where it goes and what it is, and wait for Next (in Learn only). */
@@ -68,8 +70,10 @@ export class Learn {
     if (!this.on) this.next();
     if (proceed) await proceed;
     state.stepWait = undefined;
-    this.#noted = !this.#stopped();
-    await this.#deps.note(this.#stopped() ? null : { text, ...(why ? { why } : {}), waiting: false }).catch(() => undefined);
+    // Stopped, or Learn went off while it waited: no "doing it" bubble left behind.
+    const keep = !this.#stopped() && this.on;
+    this.#noted = keep;
+    await this.#deps.note(keep ? { text, ...(why ? { why } : {}), waiting: false } : null).catch(() => undefined);
     await this.#host.save();
   }
 

@@ -15,7 +15,7 @@ import { devReload } from './dev.js';
 import type { WorkerChrome } from './executor/chrome.js';
 import { BrowserCommands, type Pace } from './executor/commands.js';
 import { AgentLoop, type Persisted } from './loop/agent.js';
-import { AI_PREFIX, LEARNING_KEY, MAIN_CONVERSATION, MEDIA_PREFIX, MODE_KEY, PACE_KEY, conversationForTab, conversationOfPort, panelPath, tabOfConversation, type PanelIntent, type WorkerMessage } from './loop/protocol.js';
+import { AI_PREFIX, LEARNING_KEY, LIMIT_KEY, MAIN_CONVERSATION, MEDIA_PREFIX, MODE_KEY, PACE_KEY, runLimit, conversationForTab, conversationOfPort, panelPath, tabOfConversation, type PanelIntent, type WorkerMessage } from './loop/protocol.js';
 import { agentPanelPaths, panelAssignments } from './panels.js';
 import { printToPdf, type PdfChrome } from './pdf.js';
 import { installProviderRules } from './scope/provider-rules.js';
@@ -253,6 +253,7 @@ function make(id: string): Conversation {
       set: async (events) => { await chrome.storage.session.set({ [traceKey(id)]: events }); },
       remove: async () => { await chrome.storage.session.remove([traceKey(id)]); },
     },
+    limit: { get: async () => runLimit((await chrome.storage.local.get(LIMIT_KEY))[LIMIT_KEY]) },
     mode: {
       get: async () => ((await chrome.storage.local.get(MODE_KEY))[MODE_KEY] === 'auto' ? 'auto' : 'ask'),
       set: async (mode) => { await chrome.storage.local.set({ [MODE_KEY]: mode }); },
@@ -362,6 +363,10 @@ async function handle(conversation: Conversation, port: Port, intent: PanelInten
     case 'decide': void loop.decide(intent.id, intent.decision); return;
     case 'set-mode': void loop.setMode(intent.mode); return;
     case 'step': loop.step(); return;
+    case 'answer':
+      if (intent.text !== undefined) loop.answerText(intent.id, intent.text); else loop.answer(intent.id, intent.skip ? null : intent.picked ?? []);
+      return;
+    case 'continue': void loop.continueRun(); return;
     case 'set-learning': void loop.setLearning(intent.on); return;
     case 'export-trace': port.postMessage({ type: 'trace', requestId: intent.requestId, json: loop.exportTrace() } satisfies WorkerMessage); return;
     case 'capture-tab': {

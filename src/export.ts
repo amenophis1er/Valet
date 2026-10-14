@@ -21,12 +21,19 @@ export function conversationMarkdown(transcript: TranscriptEntry[], title = 'Val
         break;
       }
       case 'agent': lines.push(`**Agent:**`, '', entry.text, ''); break;
-      case 'action': lines.push(`- ${entry.outcome === 'ok' ? entry.text : `${entry.text} — ${entry.outcome}`}${entry.detail ? ` (${entry.detail})` : ''}`); break;
+      case 'action': lines.push(`- ${stepText(entry)}${entry.detail ? ` (${entry.detail})` : ''}`); break;
       case 'file': lines.push(`- 📄 ${entry.name} (${entry.bytes} bytes)`); break;
       case 'notice': lines.push(`- _${entry.text}_`); break;
     }
   }
   return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()}\n`;
+}
+
+/** A step as the owner reads it, in the panel and in exports: under way, done, or with its outcome. */
+export function stepText(entry: { text: string; outcome: string }): string {
+  if (entry.outcome === 'ok') return entry.text;
+  if (entry.outcome === 'pending') return `${entry.text}…`;
+  return `${entry.text} — ${entry.outcome}`;
 }
 
 /** Media by id, as the panel read it from storage; missing ones are shown as gone. */
@@ -63,7 +70,7 @@ export function conversationHtml(transcript: TranscriptEntry[], media: MediaLook
       }
       case 'agent': parts.push(`<div class="agent"><pre>${escapeHtml(entry.text)}</pre></div>`); break;
       case 'action': {
-        const text = entry.outcome === 'ok' ? entry.text : `${entry.text} — ${entry.outcome}`;
+        const text = stepText(entry);
         actions += 1;
         steps.push(`<li class="${entry.outcome}">${escapeHtml(text)}${entry.detail ? `<small>${escapeHtml(entry.detail)}</small>` : ''}</li>`);
         if (entry.image) { flush(); parts.push(`<figure>${image(entry.image.id, entry.text)}</figure>`); }

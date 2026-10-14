@@ -51,7 +51,7 @@ button.icon {
 button.icon:hover, button.icon[aria-expanded="true"] { background: var(--v-surface-hover); color: var(--v-text); }
 button.icon:disabled { opacity: .45; }
 button.icon.danger:hover { color: var(--v-danger); background: var(--v-danger-soft); }
-button svg, .where svg, .card-head svg {
+button svg, .where svg, .card-head svg, .ask-head svg {
   width: 18px; height: 18px; flex: none; display: block;
   fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round;
 }
@@ -167,6 +167,9 @@ input[type=checkbox] { width: auto; height: auto; }
 /* Refused or skipped: a hollow amber ring. Uncertain or failed: a red diamond. */
 .step .refused::before, .step .skipped::before { background: transparent; box-shadow: inset 0 0 0 2px var(--v-warn-dot); }
 .step .unknown::before, .step .error::before { border-radius: 1.5px; background: var(--v-danger); transform: rotate(45deg) scale(.9); }
+/* Under way: a violet dot that breathes until the step's result is back. */
+.step .pending::before { background: var(--v-accent); animation: v-breathe 1200ms ease-in-out infinite; }
+.step .pending { color: var(--v-text); }
 .step .refused, .step .skipped { color: var(--v-warn); }
 .step .unknown, .step .error { color: var(--v-danger); }
 .step .detail { margin: 0 0 4px 23px; font-size: var(--v-fs-xs); line-height: 17px; color: var(--v-text-muted); white-space: pre-wrap; }
@@ -238,6 +241,31 @@ input[type=checkbox] { width: auto; height: auto; }
 #card-deny:hover { background: var(--v-surface-hover); color: var(--v-text); }
 #card-auto { color: var(--v-warn); border-color: var(--v-warn-line); }
 #card-auto:hover { background: var(--v-warn-soft); }
+
+/* A question from the agent: neutral, so it never reads as an approval. */
+.ask { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 14px; border-radius: var(--v-radius-xl); border: 1px solid var(--v-line-strong); background: var(--v-surface-raised); box-shadow: var(--v-shadow-2); animation: v-rise var(--v-dur-slow) var(--v-ease-out); }
+.ask p { margin: 0; overflow-wrap: anywhere; }
+.ask-head { display: flex; align-items: center; gap: 6px; font-size: var(--v-fs-xs); line-height: var(--v-lh-xs); font-weight: 600; color: var(--v-text-muted); }
+.ask-head svg { width: 14px; height: 14px; stroke-width: 2; }
+.ask-text { font-size: var(--v-fs-sm); line-height: var(--v-lh-sm); font-weight: 650; }
+.ask-options { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+.ask-option { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; min-height: 40px; height: auto; padding: 8px 12px; text-align: left; white-space: normal; border-radius: var(--v-radius-md); }
+.ask-option .label { display: flex; align-items: center; gap: 8px; font-weight: 600; overflow-wrap: anywhere; }
+.ask-option .hint { font-size: var(--v-fs-xs); line-height: 17px; font-weight: 400; color: var(--v-text-muted); overflow-wrap: anywhere; }
+.ask-option .tag { font-size: var(--v-fs-2xs); line-height: var(--v-lh-2xs); font-weight: 600; padding: 1px 6px; border-radius: var(--v-radius-pill); background: var(--v-surface-sunk); color: var(--v-text-muted); }
+.ask-option[aria-pressed="true"] { background: var(--v-accent-soft); border-color: var(--v-accent-line); }
+.ask-other { border-style: dashed; }
+.ask-other .label { font-weight: 500; color: var(--v-text-muted); }
+.ask-other[aria-expanded="true"] { display: none; }
+.ask-own { display: flex; align-items: flex-end; gap: 6px; padding: 6px 6px 6px 10px; border: 1px solid var(--v-accent); border-radius: var(--v-radius-md); box-shadow: 0 0 0 3px var(--v-accent-soft); }
+.ask-own textarea { flex: 1; min-height: 40px; max-height: 140px; padding: 4px 0; border: 0; background: transparent; box-shadow: none; resize: none; font-size: var(--v-fs-sm); line-height: var(--v-lh-sm); }
+.ask-own textarea:focus { box-shadow: none; outline: none; }
+.ask-own .send { width: 32px; height: 32px; min-height: 32px; padding: 0; flex: none; border-radius: 50%; background: var(--v-accent); border-color: var(--v-accent); color: var(--v-on-accent); }
+.ask-own .send svg { width: 16px; height: 16px; stroke-width: 2.2; }
+.ask .row button { min-height: 36px; padding: 0 12px; }
+.ask .ask-stop { color: var(--v-danger); }
+.ask .ask-stop:hover { background: var(--v-danger-soft); color: var(--v-danger); }
+.ask-stop svg { width: 14px; height: 14px; }
 
 /* Learn: the step the agent is waiting with, and Next. */
 .step-bar { display: flex; gap: 12px; align-items: center; padding: 12px 12px 12px 14px; border-radius: var(--v-radius-xl); border: 1px solid var(--v-accent-line); background: var(--v-surface-raised); box-shadow: var(--v-shadow-2); animation: v-rise var(--v-dur-slow) var(--v-ease-out); }
@@ -448,3 +476,7 @@ button.stop:hover { background: var(--v-danger-soft); }
   .menu, .card, .step-bar, .lightbox[open] { animation-name: v-fade; }
   .activity > details > summary::before, .switch span::after { transition: none; }
 }
+
+/* After a run stopped at its limit: Continue, one click. */
+.continue-row { display: flex; padding: 2px 0 4px; }
+.continue-row button { min-height: 36px; }

@@ -22,7 +22,7 @@ function page(): ExecutorObservation {
 
 type Turn = (request: AIChatRequest, signal: AbortSignal) => Promise<AIChatResult> | AIChatResult;
 
-function harness(turns: Turn[], options: { saved?: Persisted; connection?: Connection | null; failNext?: Error[]; /** A fill fails once dispatch has begun: its outcome is unknown. */ failDispatched?: Error; scoped?: boolean; mode?: 'ask' | 'auto'; blockedAfter?: string; captureOrigin?: string; skills?: Skill[]; learning?: boolean; now?: () => number; /** skills.get waits for this: a run held in starting. */ skillsHeld?: Promise<void> } = {}) {
+function harness(turns: Turn[], options: { saved?: Persisted; connection?: Connection | null; failNext?: Error[]; /** A fill fails once dispatch has begun: its outcome is unknown. */ failDispatched?: Error; scoped?: boolean; mode?: 'ask' | 'auto'; blockedAfter?: string; captureOrigin?: string; skills?: Skill[]; learning?: boolean; now?: () => number; /** skills.get waits for this: a run held in starting. */ skillsHeld?: Promise<void>; /** The page every observation shows. */ page?: () => ExecutorObservation; /** The owner's run limit (Settings). */ limit?: { actions: number; minutes: number } } = {}) {
   const ran: Command[] = [];
   const requests: AIChatRequest[] = [];
   const failNext = options.failNext ?? [];
@@ -37,7 +37,7 @@ function harness(turns: Turn[], options: { saved?: Persisted; connection?: Conne
       if (command.name === 'navigate') tab = true;
       return {};
     },
-    async observe() { return page(); },
+    async observe() { return options.page?.() ?? page(); },
     async capture(_session, _cancel, allow) {
       const origin = options.captureOrigin ?? 'https://shop.test';
       if (allow && !allow(origin)) throw new PreconditionError(`The tab is on ${origin}, which is not allowed for this run, so no screenshot was taken.`);
@@ -92,8 +92,9 @@ function harness(turns: Turn[], options: { saved?: Persisted; connection?: Conne
     learning: { get: () => learning, async set(on) { learning = on; } },
     async preview(args) { previews.push(args); },
     async note(note) { notes.push(note); },
-    emit(state) { states.push(state); },
+    emit(state) { states.push(structuredClone(state)); },
     retryDelaysMs: [0, 0],
+    ...(options.limit ? { limit: { get: async () => options.limit as never } } : {}),
     ...(options.now ? { now: options.now } : {}),
   };
   loop = new AgentLoop(deps);
@@ -131,7 +132,7 @@ describe('a run', () => {
     expect(h.loop.state.status).toBe('idle');
     expect(h.loop.state.transcript.map((entry) => entry.kind)).toEqual(['owner', 'action', 'action', 'agent']);
     expect(h.loop.state.handedTab).toEqual({ title: 'Shop', url: 'https://shop.test/' });
-    expect(h.requests[0]).toMatchObject({ connectionId: 'c1', connectionRevision: 3, model: 'test-model', tools: [{ name: 'browser' }, { name: 'save_file' }] });
+    expect(h.requests[0]).toMatchObject({ connectionId: 'c1', connectionRevision: 3, model: 'test-model', tools: [{ name: 'browser' }, { name: 'save_file' }, { name: 'ask_owner' }] });
     expect(String(h.requests[0]!.messages[0]!.content)).toContain('You are working in that tab: observe it first.');
     expect(wellFormed(h.saved()!.history)).toBe(true);
   });
@@ -713,7 +714,7 @@ describe('screenshots and files', () => {
     expect(file).toMatchObject({ kind: 'file', name: 'lom- summary.html.txt', mimeType: 'text/plain', bytes: 21 });
     expect(h.media.get((file as { id: string }).id)).toEqual({ kind: 'file', name: 'lom- summary.html.txt', mimeType: 'text/plain', content: 'Lomé is the capital.' });
     expect(h.loop.state.actions).toBe(0);
-    expect(h.requests[0]!.tools!.map((tool) => tool.name)).toEqual(['browser', 'save_file']);
+    expect(h.requests[0]!.tools!.map((tool) => tool.name)).toEqual(['browser', 'save_file', 'ask_owner']);
     const tool = h.requests[1]!.messages.find((message) => message.role === 'tool')!;
     expect(String(tool.content)).toContain('do not say it was downloaded');
   });
@@ -994,7 +995,7 @@ describe('Learning: one step at a time', () => {
     expect(h.notes.at(-1)).toBeNull();
   });
 
-  it('Learning turned off mid-run lets the step go and takes the bubble out of the page before the next action', async () => {
+  it('Learning turned off mid-run lets the step go and takes the bubble out of the page at once', async () => {
     let h: ReturnType<typeof harness>;
     h = harness([
       callTurn({ id: 'a', args: { action: 'navigate', url: 'https://shop.test/' } }),
@@ -1006,9 +1007,11 @@ describe('Learning: one step at a time', () => {
     await tick();
     expect(h.notes.at(-1)).toMatchObject({ waiting: true });
     await h.loop.setLearning(false);
+    // Gone as Learn goes off, with no "doing it" bubble left behind.
+    expect(h.notes.at(-1)).toBeNull();
     await running;
     expect(h.ran.map((command) => command.name)).toEqual(['navigate', 'click']);
-    expect(h.notes.slice(0, 3)).toEqual([expect.objectContaining({ waiting: true }), expect.objectContaining({ waiting: false }), null]);
+    expect(h.notes.some((note) => note?.waiting === false)).toBe(false);
     expect(h.loop.state.transcript.at(-1)).toMatchObject({ kind: 'agent', text: 'Clean.' });
   });
 
@@ -1108,5 +1111,264 @@ describe('the run trace in the loop', () => {
     expect(exported).toContain('"omitted": true');
     await h.loop.newConversation();
     expect((JSON.parse(h.loop.exportTrace()) as { events: unknown[] }).events).toEqual([]);
+  });
+});
+
+describe('questions to the owner (ask_owner)', () => {
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const MUGS = { question: 'Which mug should I add?', options: [{ label: 'Blue mug', hint: '$12.40, ships tomorrow' }, { label: 'Red mug' }, { label: 'Sage mug' }] };
+  /** The result the model got for a call. */
+  const resultFor = (h: ReturnType<typeof harness>, id: string) =>
+    JSON.parse(String(h.saved()!.history.find((message) => message.role === 'tool' && message.toolCallId === id)!.content)) as Record<string, unknown>;
+  async function asked(h: ReturnType<typeof harness>) {
+    while (!h.loop.state.question) await tick();
+    return h.loop.state.question;
+  }
+
+  it('shows the question, waits, and gives the model the pick; the transcript keeps question and answer, and no action is counted', async () => {
+    const h = harness([callTurn({ id: 'q', name: 'ask_owner', args: MUGS })]);
+    const running = h.loop.run('Add a mug to the cart');
+    const question = await asked(h);
+    expect(question).toMatchObject({ question: 'Which mug should I add?', multi: false, options: [{ label: 'Blue mug', hint: '$12.40, ships tomorrow' }, { label: 'Red mug' }, { label: 'Sage mug' }] });
+    expect(h.loop.state.status).toBe('running');
+    h.loop.answer(question.id, ['Red mug']);
+    await running;
+    expect(resultFor(h, 'q')).toEqual({ answer: 'Red mug', picked: ['Red mug'] });
+    expect(h.loop.state.question).toBeUndefined();
+    expect(h.loop.state.actions).toBe(0);
+    expect(h.loop.state.transcript).toEqual(expect.arrayContaining([{ kind: 'agent', text: 'Which mug should I add?' }, { kind: 'owner', text: 'Red mug' }]));
+    expect(wellFormed(h.saved()!.history)).toBe(true);
+  });
+
+  it('takes the owner\'s own words for that question as the answer; words for another question are ignored', async () => {
+    const h = harness([callTurn({ id: 'q', name: 'ask_owner', args: MUGS })]);
+    const running = h.loop.run('Add a mug');
+    const question = await asked(h);
+    h.loop.answerText('q-closed', 'The blue one');
+    await tick();
+    expect(h.loop.state.question?.id).toBe(question.id);
+    h.loop.answerText(question.id, '  The green one, if they have it  ');
+    await running;
+    expect(resultFor(h, 'q')).toMatchObject({ answer: 'The green one, if they have it', typed: expect.any(String) });
+    expect(h.saved()?.amendments).toBeUndefined();
+    expect(h.loop.state.transcript.filter((entry) => entry.kind === 'owner').map((entry) => (entry as { text: string }).text)).toEqual(['Add a mug', 'The green one, if they have it']);
+  });
+
+  it('a question ended by Stop stays in the conversation, marked unanswered', async () => {
+    const h = harness([callTurn({ id: 'q', name: 'ask_owner', args: MUGS })]);
+    const running = h.loop.run('Add a mug');
+    await asked(h);
+    await h.loop.stop();
+    await running;
+    expect(h.loop.state.transcript).toEqual(expect.arrayContaining([{ kind: 'agent', text: 'Which mug should I add?' }, { kind: 'notice', text: 'The question was not answered.' }]));
+  });
+
+  it('ask_owner with arguments that are not valid JSON is told so, not that the tool does not exist', async () => {
+    const h = harness([() => ({ ok: true, text: '', stopReason: 'tool_use', toolCalls: [{ id: 'q', name: 'ask_owner', args: {}, argsError: { message: 'Unexpected end of JSON input', raw: '{"question":' } }] })]);
+    await h.loop.run('Add a mug');
+    expect(String(resultFor(h, 'q')['error'])).toMatch(/not valid JSON/);
+  });
+
+  it('Skip tells the model to decide itself', async () => {
+    const h = harness([callTurn({ id: 'q', name: 'ask_owner', args: MUGS })]);
+    const running = h.loop.run('Add a mug');
+    h.loop.answer((await asked(h)).id, null);
+    await running;
+    expect(String(resultFor(h, 'q')['skipped'])).toMatch(/Decide yourself/);
+    expect(h.loop.state.transcript).toContainEqual({ kind: 'notice', text: 'You skipped the question.' });
+  });
+
+  it('several picks for a multi question; options it did not offer, a second pick on a single question, or another question\'s id are ignored', async () => {
+    const h = harness([
+      callTurn({ id: 'q1', name: 'ask_owner', args: MUGS }),
+      callTurn({ id: 'q2', name: 'ask_owner', args: { ...MUGS, question: 'Which ones?', multi: true } }),
+    ]);
+    const running = h.loop.run('Mugs');
+    const first = await asked(h);
+    h.loop.answer(first.id, ['Gold mug']);
+    h.loop.answer(first.id, ['Blue mug', 'Red mug']);
+    h.loop.answer('q-other', ['Blue mug']);
+    await tick();
+    expect(h.loop.state.question?.id).toBe(first.id);
+    h.loop.answer(first.id, ['Blue mug']);
+    while (h.loop.state.question?.id === first.id || !h.loop.state.question) await tick();
+    h.loop.answer(h.loop.state.question.id, ['Sage mug', 'Blue mug']);
+    await running;
+    // In the order offered, whatever the order clicked.
+    expect(resultFor(h, 'q2')).toEqual({ answer: 'Blue mug, Sage mug', picked: ['Blue mug', 'Sage mug'] });
+  });
+
+  it('Stop while a question waits ends the run; the call is answered and nothing after it runs', async () => {
+    const h = harness([callTurn({ id: 'q', name: 'ask_owner', args: MUGS }, { id: 'n', args: { action: 'navigate', url: 'https://shop.test/' } })]);
+    const running = h.loop.run('Add a mug');
+    await asked(h);
+    await h.loop.stop();
+    await running;
+    expect(h.loop.state.status).toBe('idle');
+    expect(h.loop.state.question).toBeUndefined();
+    expect(h.ran).toEqual([]);
+    expect(resultFor(h, 'q')['skipped']).toMatch(/stopped/);
+    expect(wellFormed(h.saved()!.history)).toBe(true);
+  });
+
+  it('skips the rest of a batch after a question: the model decides again with the answer', async () => {
+    const h = harness([callTurn({ id: 'q', name: 'ask_owner', args: MUGS }, { id: 'n', args: { action: 'navigate', url: 'https://shop.test/' } })]);
+    const running = h.loop.run('Add a mug');
+    h.loop.answer((await asked(h)).id, ['Blue mug']);
+    await running;
+    expect(h.ran).toEqual([]);
+    expect(String(resultFor(h, 'n')['skipped'])).toMatch(/asked the owner a question/);
+  });
+
+  it('answers a malformed question with an error and shows nothing', async () => {
+    const h = harness([callTurn({ id: 'q', name: 'ask_owner', args: { question: 'Which?', options: [{ label: 'Only one' }] } })]);
+    await h.loop.run('Add a mug');
+    expect(String(resultFor(h, 'q')['error'])).toMatch(/Invalid ask_owner call — options/);
+    expect(h.states.some((state) => state.question)).toBe(false);
+  });
+
+  it('the time the owner takes to answer does not count against the run', async () => {
+    let clock = 1_000;
+    const h = harness([
+      callTurn({ id: 'q', name: 'ask_owner', args: MUGS }),
+      callTurn({ id: 'o', args: { action: 'observe' } }),
+    ], { now: () => clock });
+    const running = h.loop.run('Add a mug');
+    const question = await asked(h);
+    clock += MAX_RUN_MS + 60_000;
+    h.loop.answer(question.id, ['Blue mug']);
+    await running;
+    // The observe after the answer ran: the run had not hit its time limit.
+    expect(h.loop.state.actions).toBe(1);
+    expect(h.loop.state.transcript.some((entry) => entry.kind === 'notice' && /20 minutes/.test(entry.text))).toBe(false);
+  });
+
+  it('a restart while a question waits pauses the run and tells the model the owner never answered', async () => {
+    const saved: Persisted = {
+      history: [{ role: 'user', content: 'go' }, { role: 'assistant', toolCalls: [{ id: 'q', name: 'ask_owner', args: MUGS }] }],
+      transcript: [{ kind: 'owner', text: 'go' }], status: 'running', actions: 0, startedAt: 0, connection: CONNECTION, handedTab: null,
+      question: { id: 'q-1', question: MUGS.question, options: MUGS.options, multi: false },
+      scope: { mode: 'ask', runOrigins: [], chatOrigins: [], deniedOrigins: [], chatSubmissions: [], deniedSubmissions: [] },
+    };
+    const h = harness([], { saved });
+    await h.loop.restore();
+    expect(h.loop.state.status).toBe('paused');
+    expect(h.loop.state.question).toBeUndefined();
+    expect(resultFor(h, 'q')['skipped']).toMatch(/restarted before the owner answered/);
+  });
+
+  it('records the question and the reply in the trace', async () => {
+    const h = harness([callTurn({ id: 'q', name: 'ask_owner', args: MUGS })]);
+    const running = h.loop.run('Add a mug');
+    h.loop.answer((await asked(h)).id, ['Blue mug']);
+    await running;
+    const events = (JSON.parse(h.loop.exportTrace()) as { events: Array<Record<string, unknown>> }).events;
+    expect(events).toContainEqual(expect.objectContaining({ kind: 'question', question: 'Which mug should I add?', options: ['Blue mug', 'Red mug', 'Sage mug'], multi: false }));
+    expect(events).toContainEqual(expect.objectContaining({ kind: 'reply', reply: 'Blue mug' }));
+  });
+});
+
+describe('steps as they happen', () => {
+  it('shows a step as soon as it starts, then updates that same row with its outcome', async () => {
+    const h = harness([callTurn({ id: 'n', args: { action: 'navigate', url: 'https://shop.test/' } })]);
+    await h.loop.run('Open the shop', undefined, true);
+    const actions = (state: PanelState) => state.transcript.filter((entry) => entry.kind === 'action');
+    // Before the result was back, the panel already had the step, under way.
+    const during = h.states.find((state) => actions(state).some((entry) => entry.outcome === 'pending'));
+    expect(actions(during!)).toEqual([{ kind: 'action', text: 'Open https://shop.test/', outcome: 'pending' }]);
+    // Once back: one row for it, done, where it started.
+    expect(actions(h.loop.state)).toEqual([expect.objectContaining({ text: 'Opened https://shop.test/', outcome: 'ok' })]);
+  });
+
+  it('a run cut short mid-step leaves no step under way and no call without its result', async () => {
+    let h: ReturnType<typeof harness>;
+    h = harness([
+      (request, signal) => { h.failSave(true); return callTurn({ id: 'n', args: { action: 'navigate', url: 'https://shop.test/' } })(request, signal); },
+      () => ({ ok: true, text: 'Done.', stopReason: 'end' }),
+    ]);
+    await h.loop.run('Open the shop', undefined, true);
+    expect(h.loop.state.status).toBe('idle');
+    expect(h.loop.state.transcript.some((entry) => entry.kind === 'action' && entry.outcome === 'pending')).toBe(false);
+    h.failSave(false);
+    await h.loop.run('Again');
+    expect(wellFormed(h.saved()!.history)).toBe(true);
+  });
+
+  it('a step still under way when the worker died is shown as uncertain after the restart', async () => {
+    const saved: Persisted = {
+      history: [{ role: 'user', content: 'go' }, { role: 'assistant', toolCalls: [{ id: 'x1', name: 'browser', args: { action: 'click' } }] }],
+      transcript: [{ kind: 'owner', text: 'go' }, { kind: 'action', text: 'Click button "Go"', outcome: 'pending' }], status: 'running', actions: 0, startedAt: 0, connection: CONNECTION, handedTab: null,
+      scope: { mode: 'ask', runOrigins: [], chatOrigins: [], deniedOrigins: [], chatSubmissions: [], deniedSubmissions: [] },
+    };
+    const h = harness([], { saved });
+    await h.loop.restore();
+    expect(h.loop.state.transcript[1]).toEqual({ kind: 'action', text: 'Click button "Go"', outcome: 'unknown' });
+  });
+});
+
+describe('naming a step on a large page', () => {
+  it('names a target the bound dropped from the list from its line in the tree, not by its ref', async () => {
+    const big = (): ExecutorObservation => ({ ...page(), tree: '- button "Go" [ref=e1]\n- link "Blue mug" [ref=e84]' });
+    const h = harness([
+      callTurn({ id: 'n', args: { action: 'navigate', url: 'https://shop.test/' } }),
+      (request) => callTurn({ id: 'c', args: { action: 'click', observation: lastObservationId(request), target: { ref: 'e84' } } })(request, new AbortController().signal),
+    ], { page: big });
+    await h.loop.run('Open the blue mug', undefined, true);
+    expect(h.loop.state.transcript.filter((entry) => entry.kind === 'action').map((entry) => (entry as { text: string }).text))
+      .toEqual(['Opened https://shop.test/', 'Clicked link "Blue mug"']);
+  });
+});
+
+describe('run limits and Continue', () => {
+  const observes = (count: number): Turn[] => Array.from({ length: count }, (_, i) => callTurn({ id: `o${i}`, args: { action: 'observe' } }));
+
+  it('stops at the owner\'s limit, says so, and offers Continue; the next message starts a fresh stretch without it', async () => {
+    const h = harness([...observes(105), () => ({ ok: true, text: 'Carried on.', stopReason: 'end' })], { limit: { actions: 100, minutes: 45 } });
+    await h.loop.run('a long task');
+    expect(h.loop.state.actions).toBe(100);
+    expect(h.loop.state.atLimit).toBe(true);
+    expect(h.loop.state.transcript.at(-1)).toMatchObject({ kind: 'notice', text: expect.stringMatching(/^Stopped after 100 browser actions.*Continue to go on/) });
+    await h.loop.continueRun();
+    expect(h.loop.state.atLimit).toBeUndefined();
+    // The fresh stretch ran the rest, then the model answered.
+    expect(h.loop.state.transcript.at(-1)).toMatchObject({ kind: 'agent', text: 'Carried on.' });
+  });
+
+  it('Continue keeps the request\'s one-time approvals and refusals; a new message starts them over', async () => {
+    const scope = { mode: 'ask' as const, runOrigins: ['https://a.test'], chatOrigins: [], deniedOrigins: ['https://b.test'], chatSubmissions: [], deniedSubmissions: [] };
+    const saved: Persisted = {
+      history: [{ role: 'user', content: 'go' }, { role: 'assistant', content: 'Stopped.' }],
+      transcript: [{ kind: 'owner', text: 'go' }], status: 'idle', actions: 40, startedAt: 0, connection: CONNECTION, handedTab: null, scope, atLimit: true,
+    };
+    const h = harness([() => ({ ok: true, text: 'Carried on.', stopReason: 'end' }), () => ({ ok: true, text: 'New one.', stopReason: 'end' })], { saved });
+    await h.loop.restore();
+    await h.loop.continueRun();
+    expect(h.saved()?.scope).toMatchObject({ runOrigins: ['https://a.test'], deniedOrigins: ['https://b.test'] });
+    // Offered once: with no limit reached, Continue does nothing.
+    await h.loop.continueRun();
+    expect(h.requests.length).toBe(1);
+    await h.loop.run('Something else');
+    expect(h.saved()?.scope).toMatchObject({ runOrigins: [], deniedOrigins: [] });
+  });
+
+  it('the time limit follows the setting too', async () => {
+    let clock = 1_000;
+    const h = harness([
+      (request, signal) => { clock += 30 * 60_000; return callTurn({ id: 'a', args: { action: 'observe' } })(request, signal); },
+      (request, signal) => { clock += 30 * 60_000; return callTurn({ id: 'b', args: { action: 'observe' } })(request, signal); },
+    ], { now: () => clock, limit: { actions: 100, minutes: 45 } });
+    await h.loop.run('take your time');
+    // 30 minutes in, under 45: the first observe ran; 60 minutes in, over: the second did not.
+    expect(h.loop.state.actions).toBe(1);
+    expect(h.loop.state.atLimit).toBe(true);
+    expect(h.loop.state.transcript.at(-1)).toMatchObject({ kind: 'notice', text: expect.stringMatching(/^Stopped after 45 minutes/) });
+  });
+
+  it('offers no Continue after a run that finished, failed or was stopped', async () => {
+    const h = harness([() => ({ ok: false, error: 'nope', retryable: false })]);
+    await h.loop.run('go');
+    expect(h.loop.state.atLimit).toBeUndefined();
+    await h.loop.run('again');
+    expect(h.loop.state.atLimit).toBeUndefined();
   });
 });

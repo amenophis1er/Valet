@@ -13,8 +13,8 @@ import { readAttachment, thumbnailOf } from './composer.js';
 import { grabFrame } from './share.js';
 import { dictation as attachDictation, onDeviceModel, type ModelState } from './dictation/index.js';
 import { MAX_ATTACHMENTS, checkAttachments, type Attachment } from './loop/attachments.js';
-import { AI_PREFIX, HEARTBEAT_MS, MEDIA_PREFIX, PACE_KEY, PANEL_PORT, conversationForTab, panelPortName, type Media, type PanelIntent, type PanelState, type WorkerMessage } from './loop/protocol.js';
-import { conversationHtml, conversationMarkdown } from './export.js';
+import { AI_PREFIX, HEARTBEAT_MS, LIMIT_KEY, MEDIA_PREFIX, PACE_KEY, PANEL_PORT, RUN_LIMITS, conversationForTab, runLimit, panelPortName, type Media, type PanelIntent, type PanelState, type WorkerMessage } from './loop/protocol.js';
+import { conversationHtml, conversationMarkdown, stepText } from './export.js';
 import { MAX_SKILL_CHARS, exportSkills, importSkills, loadSkills, newSkillId, parseSites, removeSkill, saveSkill, validateSkill, type Skill } from './skills/skills.js';
 
 interface TabInfo { id?: number; url?: string; title?: string; windowId?: number }
@@ -403,6 +403,7 @@ function render(): void {
     list.append(item);
   }
   if (skillable()) list.append(saveSkillRow());
+  if (state.atLimit && state.status === 'idle') list.append(continueRow());
   if (steerFocused) document.getElementById('skill-focus')?.focus();
   announce(entries);
   list.scrollTop = list.scrollHeight;
@@ -423,9 +424,10 @@ function render(): void {
     $('step-why').textContent = wait.why ?? '';
   }
   const status = $('status');
-  status.hidden = !running && !paused;
+  // A question says it is waiting by itself.
+  status.hidden = (!running && !paused) || !!state.question;
   status.textContent = '';
-  status.classList.toggle('working', running && !wait);
+  status.classList.toggle('working', running && !wait && !state.question);
   if (running && wait) {
     status.textContent = 'Waiting for you: press Next step, here or in the page.';
   } else if (running) {
@@ -441,6 +443,7 @@ function render(): void {
   else void renderActiveConnection();
 
   renderCard();
+  renderQuestion();
   keepAlive(running);
   renderTab();
 }
@@ -479,7 +482,7 @@ function stepRow(entry: StepEntry, withImage: boolean): HTMLLIElement {
   const details = document.createElement('details');
   const summary = document.createElement('summary');
   summary.className = `action ${entry.outcome}`;
-  summary.textContent = entry.outcome === 'ok' ? entry.text : `${entry.text} — ${entry.outcome}`;
+  summary.textContent = stepText(entry);
   details.append(summary);
   if (entry.detail) {
     const detail = document.createElement('div');
@@ -517,14 +520,14 @@ function activity(group: Entry[], key: number, live = false): HTMLLIElement[] {
   details.open = openFolds.has(key);
   details.ontoggle = () => { if (details.open) openFolds.add(key); else openFolds.delete(key); };
   const summary = document.createElement('summary');
-  const problems = steps.filter((step) => step.outcome !== 'ok');
+  const problems = steps.filter((step) => step.outcome !== 'ok' && step.outcome !== 'pending');
   const telling = [...steps].reverse().find((step) => step.text !== 'Read the page') ?? steps.at(-1)!;
   const count = document.createElement('span');
   count.className = 'count-steps';
   count.textContent = `${steps.length} step${steps.length === 1 ? '' : 's'}`;
   const latest = document.createElement('span');
   latest.className = 'latest';
-  latest.textContent = telling.outcome === 'ok' ? telling.text : `${telling.text} — ${telling.outcome}`;
+  latest.textContent = stepText(telling);
   summary.append(count, latest);
   if (live) summary.append(dots());
   if (problems.length > 0 && !(problems.length === 1 && problems[0] === telling)) {
@@ -598,6 +601,91 @@ function renderCard(): void {
   const lead = leads[approval.reason] ?? 'The agent wants to use ';
   const tail = approval.reason === 'blocked' ? '. It was blocked; nothing was sent there. Allow the agent to go there?' : '. Allow it?';
   text.append(lead, origin, tail);
+}
+
+/** The question the picker is showing, and what the owner has picked in it so far (multi). */
+let askFor: string | undefined;
+let askPicked = new Set<string>();
+
+/**
+ * A question from the agent takes the composer's place: its options, one
+ * click for a single choice and Send for several; "Something else…" for an
+ * answer of the owner's own; Skip to let the agent decide; and Stop, which
+ * the hidden composer would otherwise hold.
+ */
+function renderQuestion(): void {
+  const box = $('ask');
+  const question = state?.question;
+  box.hidden = !question;
+  $('box').hidden = !!question;
+  if (!question) { askFor = undefined; askPicked = new Set(); return; }
+  const fresh = askFor !== question.id;
+  if (fresh) {
+    askFor = question.id;
+    askPicked = new Set();
+    $<HTMLTextAreaElement>('ask-input').value = '';
+    showOwnAnswer(false);
+  }
+  // Built from nodes only: the words are the model's, and may come from a page.
+  $('ask-text').textContent = question.question;
+  const options = $('ask-options');
+  options.textContent = '';
+  question.options.forEach((option, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ask-option';
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.append(option.label);
+    if (index === 0) {
+      const tag = document.createElement('span');
+      tag.className = 'tag';
+      tag.textContent = 'Suggested';
+      label.append(tag);
+    }
+    button.append(label);
+    if (option.hint) {
+      const hint = document.createElement('span');
+      hint.className = 'hint';
+      hint.textContent = option.hint;
+      button.append(hint);
+    }
+    if (question.multi) {
+      button.setAttribute('aria-pressed', String(askPicked.has(option.label)));
+      button.onclick = () => {
+        if (askPicked.has(option.label)) askPicked.delete(option.label); else askPicked.add(option.label);
+        // Updated in place, so the button keeps keyboard focus.
+        button.setAttribute('aria-pressed', String(askPicked.has(option.label)));
+        $<HTMLButtonElement>('ask-send').disabled = askPicked.size === 0;
+      };
+    } else {
+      button.onclick = () => send({ type: 'answer', id: question.id, picked: [option.label] });
+    }
+    options.append(button);
+  });
+  const sendButton = $<HTMLButtonElement>('ask-send');
+  sendButton.hidden = !question.multi;
+  sendButton.disabled = askPicked.size === 0;
+  sendButton.onclick = () => send({ type: 'answer', id: question.id, picked: [...askPicked] });
+  $('ask-skip').onclick = () => send({ type: 'answer', id: question.id, skip: true });
+  // Met at once by keyboard and screen reader users, once per question.
+  if (fresh) (options.firstElementChild as HTMLElement | null)?.focus();
+}
+
+/** "Something else…": a field of its own in the picker, for an answer the options do not have. */
+function showOwnAnswer(open: boolean): void {
+  $('ask-own').hidden = !open;
+  $('ask-other').setAttribute('aria-expanded', String(open));
+  if (open) $('ask-input').focus();
+}
+
+/** The owner's own answer: while a question is open, the worker takes a message as the answer to it. */
+function sendOwnAnswer(): void {
+  const input = $<HTMLTextAreaElement>('ask-input');
+  const text = input.value.trim();
+  if (!text || !state?.question) return;
+  send({ type: 'answer', id: state.question.id, text });
+  input.value = '';
 }
 
 /** The approval mode, as the composer shows it: a word, amber in Auto, a menu to change it. */
@@ -968,11 +1056,50 @@ async function renderPace(): Promise<void> {
   }
 }
 
+/** Settings → Check in after: how many actions (and minutes) a run goes before it stops for the owner. */
+async function renderLimit(): Promise<void> {
+  const chosen = runLimit((await chrome.storage.local.get(LIMIT_KEY))[LIMIT_KEY]);
+  const note = (limit: (typeof RUN_LIMITS)[number]) => `A run stops for you after ${limit.actions} browser actions or ${limit.minutes} minutes, whichever comes first; Continue picks it up.${limit.actions > RUN_LIMITS[0].actions ? ' Longer runs use more of your model.' : ''}`;
+  const group = $('limits');
+  group.textContent = '';
+  for (const limit of RUN_LIMITS) {
+    const label = document.createElement('label');
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'limit';
+    radio.value = String(limit.actions);
+    radio.checked = limit.actions === chosen.actions;
+    radio.onchange = () => {
+      if (!radio.checked) return;
+      $('limit-note').textContent = note(limit);
+      void chrome.storage.local.set({ [LIMIT_KEY]: limit.actions });
+    };
+    const text = document.createElement('span');
+    text.textContent = `${limit.actions} steps`;
+    label.append(radio, text);
+    group.append(label);
+  }
+  $('limit-note').textContent = note(chosen);
+}
+
+/** After a run stopped at its limit: Continue, as the owner would say it. */
+function continueRow(): HTMLLIElement {
+  const item = document.createElement('li');
+  item.className = 'continue-row';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'primary';
+  button.textContent = 'Continue';
+  button.onclick = () => { button.disabled = true; send({ type: 'continue' }); };
+  item.append(button);
+  return item;
+}
+
 function showSettings(open: boolean): void {
   $('open-settings').setAttribute('aria-pressed', String(open));
   $('settings-view').hidden = !open;
   $('chat-view').hidden = open;
-  if (open) { void connections.render(); void renderPace(); void renderSkills(); void renderModel(); }
+  if (open) { void connections.render(); void renderPace(); void renderLimit(); void renderSkills(); void renderModel(); }
   else { send({ type: 'get' }); void renderActiveConnection(); }
 }
 
@@ -1132,7 +1259,7 @@ function closeSkillMenu(): void {
 /** What a screen reader hears: the newest answer or notice, once, rather than the whole transcript on every rebuild. */
 let announced = '';
 function announce(entries: readonly Entry[]): void {
-  const newest = [...entries].reverse().find((entry) => entry.kind === 'agent' || entry.kind === 'notice' || (entry.kind === 'action' && entry.outcome !== 'ok'));
+  const newest = [...entries].reverse().find((entry) => entry.kind === 'agent' || entry.kind === 'notice' || (entry.kind === 'action' && entry.outcome !== 'ok' && entry.outcome !== 'pending'));
   const text = !newest ? '' : newest.kind === 'action' ? `${newest.text}: ${newest.outcome}` : newest.kind === 'file' ? '' : newest.text;
   if (text === announced) return;
   announced = text;
@@ -1478,6 +1605,13 @@ $('goal').addEventListener('keydown', (event) => {
 $('stop').onclick = () => send({ type: 'stop' });
 $('step-next').onclick = () => send({ type: 'step' });
 $('learn').onclick = () => send({ type: 'set-learning', on: state?.learning !== true });
+$('ask-other').onclick = () => showOwnAnswer(true);
+$('ask-stop').onclick = () => send({ type: 'stop' });
+$('ask-own').addEventListener('submit', (event) => { event.preventDefault(); sendOwnAnswer(); });
+$('ask-input').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendOwnAnswer(); }
+  if (event.key === 'Escape') { showOwnAnswer(false); $('ask-other').focus(); }
+});
 $('resume').onclick = () => send({ type: 'resume' });
 // A new conversation: back in the chat, cursor in the message box, ready to type.
 $('new-conversation').onclick = () => {
