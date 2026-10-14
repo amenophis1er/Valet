@@ -45,9 +45,11 @@ export const LIMIT_KEY = 'agent:limit';
  */
 export const RUN_LIMITS = [{ actions: 40, minutes: 20 }, { actions: 100, minutes: 45 }, { actions: 200, minutes: 90 }] as const;
 export type RunLimit = (typeof RUN_LIMITS)[number];
-/** The stored choice, or the first (the default) for anything else. */
+/** Until the owner picks one: 100 actions, room for a real task in one go. */
+export const DEFAULT_LIMIT: RunLimit = RUN_LIMITS[1];
+/** The stored choice, or the default for anything else. */
 export function runLimit(stored: unknown): RunLimit {
-  return RUN_LIMITS.find((limit) => limit.actions === stored) ?? RUN_LIMITS[0];
+  return RUN_LIMITS.find((limit) => limit.actions === stored) ?? DEFAULT_LIMIT;
 }
 
 /** What is stored under a media key. */
@@ -121,6 +123,8 @@ export interface PanelState {
   question?: Question;
   /** The last run stopped at its limit of actions or time: the panel offers Continue. */
   atLimit?: boolean;
+  /** The agent's notes for this conversation, for the owner to read. */
+  notepad?: string;
 }
 
 /** A question the agent asked with `ask_owner`. Its words are the model's, and may come from a page: never an approval. */

@@ -193,7 +193,7 @@ test('runs a goal from the panel: the agent searches the shop and answers', asyn
   expect(model.origins.length).toBeGreaterThan(0);
   expect(model.origins.filter(Boolean)).toEqual([]);
   const first = model.requests[0]!;
-  expect(first.tools).toHaveLength(3);
+  expect(first.tools).toHaveLength(4);
   expect((first as Record<string, unknown>)['parallel_tool_calls']).toBe(false);
   // Every tool call was answered before the next model turn.
   const last = model.requests.at(-1)!.messages;
@@ -914,7 +914,41 @@ test('a question from the agent: picked with one click, or answered by typing, a
   }
 });
 
-test('a run that stops at its limit offers Continue, and Settings sets the limit', async () => {
+test('the agent\'s notepad: notes show as steps, the model reads the latest at the end of each turn, and the owner reads and exports it', async () => {
+  const lastText = (messages: Array<{ content?: unknown }>) => JSON.stringify(messages.at(-1)?.content ?? '');
+  model.script([
+    () => ({ tool: 'notepad', call: { append: 'Blue mug: $12.40, ships tomorrow' } }),
+    ({ messages }) => ({ tool: 'notepad', call: { append: lastText(messages).includes('Blue mug: $12.40') ? 'Red mug: $14.00' : 'NOTEPAD NOT SHOWN' } }),
+    ({ messages }) => ({ text: lastText(messages).includes('Red mug: $14.00') ? 'Both noted.' : 'Lost my notes.' }),
+  ]);
+  const panel = await openPanel();
+  try {
+    await panel.getByRole('button', { name: 'New conversation' }).click();
+    await panel.locator('#goal').fill('Note the mug prices');
+    await panel.getByRole('button', { name: 'Send' }).click();
+    await expect(panel.locator('.agent').last()).toHaveText('Both noted.', { timeout: 30_000 });
+    await panel.locator('.activity > details > summary').last().click();
+    await expect(panel.locator('.activity .action')).toHaveText(['Noted: Blue mug: $12.40, ships tomorrow', 'Noted: Red mug: $14.00']);
+
+    await panel.getByRole('button', { name: 'More' }).click();
+    await expect(panel.locator('#notepad-hint')).toHaveText('2 lines the agent wrote down while it worked');
+    await panel.getByRole('menuitem', { name: /Agent's notepad/ }).click();
+    const notepad = panel.getByRole('dialog', { name: 'Agent\'s notepad' });
+    await expect(notepad).toBeVisible();
+    await expect(notepad.locator('pre')).toHaveText('Blue mug: $12.40, ships tomorrow\nRed mug: $14.00');
+    await panel.screenshot({ path: test.info().outputPath('notepad.png') });
+    await notepad.getByRole('button', { name: 'Close' }).click();
+    await expect(notepad).toBeHidden();
+
+    // A new conversation has an empty notepad: the item is there, and off.
+    await panel.getByRole('button', { name: 'New conversation' }).click();
+    await expect(panel.locator('#open-notepad')).toBeDisabled();
+  } finally {
+    await panel.close();
+  }
+});
+
+test('a run that stops at its limit offers Continue, and Settings sets the limit (100 steps until picked)', async () => {
   model.script([
     () => ({ call: { action: 'navigate', url: `${fixture.main}/shop?t=limit` } }),
     ...Array.from({ length: 39 }, () => () => ({ call: { action: 'observe' } })),
@@ -922,6 +956,12 @@ test('a run that stops at its limit offers Continue, and Settings sets the limit
   ]);
   const panel = await openPanel();
   try {
+    // 100 steps until the owner picks: this run checks in after 40.
+    await panel.getByRole('button', { name: 'Settings' }).click();
+    await expect(panel.getByRole('radio', { name: '100 steps' })).toBeChecked();
+    await panel.getByRole('radio', { name: '40 steps' }).check({ force: true });
+    await expect(panel.locator('#limit-note')).toContainText('after 40 browser actions or 20 minutes');
+    await panel.getByRole('button', { name: 'Settings' }).click();
     await panel.getByRole('button', { name: 'New conversation' }).click();
     await panel.locator('#goal').fill('Look around for a while');
     await panel.getByRole('button', { name: 'Send' }).click();
@@ -934,10 +974,11 @@ test('a run that stops at its limit offers Continue, and Settings sets the limit
 
     // Settings → Check in after: kept for the next run.
     await panel.getByRole('button', { name: 'Settings' }).click();
+    await expect(panel.getByRole('radio', { name: '40 steps' })).toBeChecked();
+    await panel.getByRole('radio', { name: '200 steps' }).check({ force: true });
+    await expect(panel.locator('#limit-note')).toContainText('after 200 browser actions or 90 minutes');
+    expect(await panel.evaluate(async () => (await (globalThis as any).chrome.storage.local.get('agent:limit'))['agent:limit'])).toBe(200);
     await panel.getByRole('radio', { name: '100 steps' }).check({ force: true });
-    await expect(panel.locator('#limit-note')).toContainText('after 100 browser actions or 45 minutes');
-    expect(await panel.evaluate(async () => (await (globalThis as any).chrome.storage.local.get('agent:limit'))['agent:limit'])).toBe(100);
-    await panel.getByRole('radio', { name: '40 steps' }).check({ force: true });
     await panel.getByRole('button', { name: 'Settings' }).click();
   } finally {
     await panel.close();

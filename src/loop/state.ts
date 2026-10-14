@@ -35,6 +35,8 @@ export interface Persisted {
   question?: Question;
   /** The last run stopped at its limit of actions or time (Continue in the panel). */
   atLimit?: boolean;
+  /** The agent's own notes for this conversation (notepad.ts). */
+  notepad?: string;
   /** Messages the owner sent mid-run, not yet given to the model: a restart must not lose them. */
   amendments?: Array<string | AIContentPart[]>;
 }

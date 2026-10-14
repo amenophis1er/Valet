@@ -377,6 +377,10 @@ button.stop:hover { background: var(--v-danger-soft); }
 .lightbox::backdrop { background: var(--v-scrim); }
 .lightbox img { max-width: 100%; max-height: calc(100vh - 120px); object-fit: contain; border-radius: var(--v-radius-md); border: 1px solid var(--v-line); background: #fff; }
 .lightbox .row button { min-height: 44px; }
+.notepad { width: min(560px, calc(100vw - 32px)); }
+.notepad h2 { margin: 0; font-size: var(--v-fs-md); line-height: var(--v-lh-md); }
+.notepad .hint { margin: -6px 0 0; }
+.notepad pre { margin: 0; max-height: calc(100vh - 220px); overflow: auto; padding: 10px 12px; border: 1px solid var(--v-line); border-radius: var(--v-radius-md); background: var(--v-surface-sunk); font: var(--v-fs-sm)/var(--v-lh-sm) ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* ---- Settings ---- */
 #settings-view { padding: 0 14px 20px; gap: 28px; overflow-y: auto; }

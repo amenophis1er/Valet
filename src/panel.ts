@@ -13,7 +13,7 @@ import { readAttachment, thumbnailOf } from './composer.js';
 import { grabFrame } from './share.js';
 import { dictation as attachDictation, onDeviceModel, type ModelState } from './dictation/index.js';
 import { MAX_ATTACHMENTS, checkAttachments, type Attachment } from './loop/attachments.js';
-import { AI_PREFIX, HEARTBEAT_MS, LIMIT_KEY, MEDIA_PREFIX, PACE_KEY, PANEL_PORT, RUN_LIMITS, conversationForTab, runLimit, panelPortName, type Media, type PanelIntent, type PanelState, type WorkerMessage } from './loop/protocol.js';
+import { AI_PREFIX, HEARTBEAT_MS, LIMIT_KEY, MEDIA_PREFIX, PACE_KEY, PANEL_PORT, DEFAULT_LIMIT, RUN_LIMITS, conversationForTab, runLimit, panelPortName, type Media, type PanelIntent, type PanelState, type WorkerMessage } from './loop/protocol.js';
 import { conversationHtml, conversationMarkdown, stepText } from './export.js';
 import { MAX_SKILL_CHARS, exportSkills, importSkills, loadSkills, newSkillId, parseSites, removeSkill, saveSkill, validateSkill, type Skill } from './skills/skills.js';
 
@@ -410,6 +410,7 @@ function render(): void {
   $('empty').hidden = state.transcript.length > 0;
   list.hidden = state.transcript.length === 0;
   $<HTMLButtonElement>('more').disabled = state.transcript.length === 0;
+  renderNotepad();
 
   const running = state.status === 'running';
   const paused = state.status === 'paused';
@@ -1059,7 +1060,7 @@ async function renderPace(): Promise<void> {
 /** Settings → Check in after: how many actions (and minutes) a run goes before it stops for the owner. */
 async function renderLimit(): Promise<void> {
   const chosen = runLimit((await chrome.storage.local.get(LIMIT_KEY))[LIMIT_KEY]);
-  const note = (limit: (typeof RUN_LIMITS)[number]) => `A run stops for you after ${limit.actions} browser actions or ${limit.minutes} minutes, whichever comes first; Continue picks it up.${limit.actions > RUN_LIMITS[0].actions ? ' Longer runs use more of your model.' : ''}`;
+  const note = (limit: (typeof RUN_LIMITS)[number]) => `A run stops for you after ${limit.actions} browser actions or ${limit.minutes} minutes, whichever comes first; Continue picks it up.${limit.actions > DEFAULT_LIMIT.actions ? ' Longer runs use more of your model.' : ''}`;
   const group = $('limits');
   group.textContent = '';
   for (const limit of RUN_LIMITS) {
@@ -1131,9 +1132,24 @@ function conversationTitle(): string {
   return goal ? goal.slice(0, 60) : 'Valet conversation';
 }
 
+/** The agent's notepad: the ⋯ item says whether there is one, and an open notepad follows the agent as it writes. */
+function renderNotepad(): void {
+  const text = state?.notepad ?? '';
+  $<HTMLButtonElement>('open-notepad').disabled = !text;
+  $('notepad-hint').textContent = text ? `${text.split('\n').length} line${text.includes('\n') ? 's' : ''} the agent wrote down while it worked` : 'Empty: the agent has not noted anything yet';
+  $('notepad-text').textContent = text || 'Empty.';
+}
+
+function openNotepad(): void {
+  closeMore();
+  renderNotepad();
+  $<HTMLDialogElement>('notepad').showModal();
+  $('notepad-copy').focus();
+}
+
 async function copyConversation(): Promise<void> {
   if (!state) return;
-  const ok = await copyText(conversationMarkdown(state.transcript, conversationTitle()));
+  const ok = await copyText(conversationMarkdown(state.transcript, conversationTitle(), state.notepad));
   showError(ok ? '' : 'Could not copy to the clipboard.');
 }
 
@@ -1165,7 +1181,7 @@ async function saveConversation(): Promise<void> {
     const value = (await chrome.storage.session.get(`${MEDIA_PREFIX}${id}`))[`${MEDIA_PREFIX}${id}`] as Media | undefined;
     if (value) stored.set(id, value);
   }
-  const html = conversationHtml(state.transcript, (id) => stored.get(id), conversationTitle());
+  const html = conversationHtml(state.transcript, (id) => stored.get(id), conversationTitle(), state.notepad);
   const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
   download(url, `valet-${new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '')}.html`);
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
@@ -1555,6 +1571,14 @@ $('menu-save-skill').onclick = () => { closeMore(); saveSkillFromMenu(); };
 $('copy-conversation').onclick = () => { closeMore(); void copyConversation(); };
 $('save-conversation').onclick = () => { closeMore(); void saveConversation(); };
 $('save-trace').onclick = () => { closeMore(); saveTrace(); };
+$('open-notepad').onclick = openNotepad;
+$('notepad-close').onclick = () => $<HTMLDialogElement>('notepad').close();
+$('notepad').addEventListener('click', (event) => { if (event.target === event.currentTarget) $<HTMLDialogElement>('notepad').close(); });
+$('notepad-copy').onclick = async () => {
+  const ok = await copyText(state?.notepad ?? '');
+  $('notepad-copy').textContent = ok ? 'Copied' : 'Could not copy';
+  setTimeout(() => { $('notepad-copy').textContent = 'Copy'; }, 1500);
+};
 $('goal').addEventListener('input', (event) => {
   // An @ at the start or after a space brings up the skills.
   const goal = event.target as HTMLTextAreaElement;

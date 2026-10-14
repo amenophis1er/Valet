@@ -70,6 +70,11 @@ companion app.
   Type `@` in the message box to bring one in, and after a run that went well,
   **Save as skill** drafts one from what worked — you edit it before it is
   kept (Settings → Skills).
+- **Notes as it goes** — on a task that gathers from many pages, the agent
+  writes what it needs in a **notepad** for the conversation (prices, names,
+  dates, with the page each came from) and works from it instead of opening
+  pages again. Its notes show as steps; ⋯ → Agent's notepad shows the whole
+  note, and it is in every export. It goes with the conversation.
 - **See why a run went wrong** — the ⋯ menu saves a **run trace**: every
   model turn, every action with its arguments and result, every approval and
   state change, with times — one JSON file to inspect or share.
@@ -99,8 +104,8 @@ enforces the rules:
 - **Hard limits.** The agent never types into password fields, never runs
   code in pages, and never follows instructions found in page content. Sign-ins,
   CAPTCHAs and MFA are handed to you.
-- **Budgets.** A run stops for you after 40 browser actions or 20 minutes —
-  100/45 or 200/90 if you choose (Settings → Check in after); **Continue**
+- **Budgets.** A run stops for you after 100 browser actions or 45 minutes —
+  40/20 or 200/90 if you choose (Settings → Check in after); **Continue**
   picks it up in one click. There is no unlimited setting. Stop always works.
 
 ## Permissions

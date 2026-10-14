@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { RunController, type ExecutorLike, type ScopeGate } from '../controller/controller.js';
 import type { ExecutorObservation } from '../executor/commands.js';
 import { PreconditionError, type Command } from '../executor/protocol.js';
+import { MAX_NOTEPAD_CHARS } from './notepad.js';
 import { AgentLoop, DRAFT_CHARS, MAX_ACTIONS, MAX_RUN_MS, trimDraft, type Connection, type LoopDeps, type Persisted } from './agent.js';
 import { MAX_SKILL_CHARS } from '../skills/skills.js';
 import type { PanelState, TranscriptEntry } from './protocol.js';
@@ -132,7 +133,7 @@ describe('a run', () => {
     expect(h.loop.state.status).toBe('idle');
     expect(h.loop.state.transcript.map((entry) => entry.kind)).toEqual(['owner', 'action', 'action', 'agent']);
     expect(h.loop.state.handedTab).toEqual({ title: 'Shop', url: 'https://shop.test/' });
-    expect(h.requests[0]).toMatchObject({ connectionId: 'c1', connectionRevision: 3, model: 'test-model', tools: [{ name: 'browser' }, { name: 'save_file' }, { name: 'ask_owner' }] });
+    expect(h.requests[0]).toMatchObject({ connectionId: 'c1', connectionRevision: 3, model: 'test-model', tools: [{ name: 'browser' }, { name: 'save_file' }, { name: 'ask_owner' }, { name: 'notepad' }] });
     expect(String(h.requests[0]!.messages[0]!.content)).toContain('You are working in that tab: observe it first.');
     expect(wellFormed(h.saved()!.history)).toBe(true);
   });
@@ -237,7 +238,7 @@ describe('guards and the owner', () => {
     expect(wellFormed(second.slice(0, -1))).toBe(true);
   });
 
-  it('stops after 20 minutes of one run', async () => {
+  it(`stops after ${MAX_RUN_MS / 60_000} minutes of one run`, async () => {
     let clock = 1_000;
     const h = harness([
       (request, signal) => { clock += MAX_RUN_MS + 1; return callTurn({ id: 'n', args: { action: 'navigate', url: 'https://shop.test/' } })(request, signal); },
@@ -245,7 +246,7 @@ describe('guards and the owner', () => {
     ], { now: () => clock });
     await h.loop.run('take your time');
     expect(h.loop.state.status).toBe('idle');
-    expect(h.loop.state.transcript.at(-1)).toMatchObject({ kind: 'notice', text: expect.stringMatching(/20 minutes/) });
+    expect(h.loop.state.transcript.at(-1)).toMatchObject({ kind: 'notice', text: expect.stringContaining(`${MAX_RUN_MS / 60_000} minutes`) });
     expect(h.loop.state.transcript.some((entry) => entry.kind === 'agent')).toBe(false);
   });
 
@@ -714,7 +715,7 @@ describe('screenshots and files', () => {
     expect(file).toMatchObject({ kind: 'file', name: 'lom- summary.html.txt', mimeType: 'text/plain', bytes: 21 });
     expect(h.media.get((file as { id: string }).id)).toEqual({ kind: 'file', name: 'lom- summary.html.txt', mimeType: 'text/plain', content: 'Lomé is the capital.' });
     expect(h.loop.state.actions).toBe(0);
-    expect(h.requests[0]!.tools!.map((tool) => tool.name)).toEqual(['browser', 'save_file', 'ask_owner']);
+    expect(h.requests[0]!.tools!.map((tool) => tool.name)).toEqual(['browser', 'save_file', 'ask_owner', 'notepad']);
     const tool = h.requests[1]!.messages.find((message) => message.role === 'tool')!;
     expect(String(tool.content)).toContain('do not say it was downloaded');
   });
@@ -1370,5 +1371,71 @@ describe('run limits and Continue', () => {
     expect(h.loop.state.atLimit).toBeUndefined();
     await h.loop.run('again');
     expect(h.loop.state.atLimit).toBeUndefined();
+  });
+});
+
+describe('the notepad', () => {
+  const done: Turn = () => ({ ok: true, text: 'Done.', stopReason: 'end' });
+  const lastContent = (request: AIChatRequest) => JSON.stringify(request.messages.at(-1)!.content);
+
+  it('keeps what the agent notes for the conversation, shows it the latest note each turn, and never counts it as a browser action', async () => {
+    const h = harness([
+      callTurn({ id: 'n1', name: 'notepad', args: { append: 'The Girl You Lost: £12.29, 5 stars' } }),
+      callTurn({ id: 'n2', name: 'notepad', args: { append: 'The Silkworm: £23.05' } }),
+      done,
+      // The next message in the same conversation still has it.
+      done,
+    ]);
+    await h.loop.run('Collect the prices');
+    expect(h.loop.state.notepad).toBe('The Girl You Lost: £12.29, 5 stars\nThe Silkworm: £23.05');
+    expect(h.saved()!.notepad).toBe(h.loop.state.notepad);
+    expect(h.loop.state.actions).toBe(0);
+    expect(h.loop.state.transcript.filter((entry) => entry.kind === 'action').map((entry) => entry.text)).toEqual(['Noted: The Girl You Lost: £12.29, 5 stars', 'Noted: The Silkworm: £23.05']);
+    // No note before the first write; after each, the latest at the end of what the model reads, and only there.
+    expect(JSON.stringify(h.requests[0]!.messages)).not.toContain('Your notepad');
+    expect(lastContent(h.requests[1]!)).toContain('The Girl You Lost');
+    expect(lastContent(h.requests[2]!)).toContain('The Silkworm');
+    expect(JSON.stringify(h.requests[2]!.messages.slice(0, -1))).not.toContain('Your notepad');
+    expect(wellFormed(h.saved()!.history)).toBe(true);
+    await h.loop.run('And the total?');
+    expect(lastContent(h.requests[3]!)).toMatch(/And the total\?.*Your notepad.*The Silkworm/);
+    // A new conversation starts with an empty one.
+    await h.loop.newConversation();
+    expect(h.loop.state.notepad).toBeUndefined();
+  });
+
+  it('rewrites or clears the whole note with replace', async () => {
+    const h = harness([
+      callTurn({ id: 'n1', name: 'notepad', args: { append: 'draft line' } }),
+      callTurn({ id: 'n2', name: 'notepad', args: { replace: '  Tidy: 2 books, £35.34 in all  ' } }),
+      callTurn({ id: 'n3', name: 'notepad', args: { replace: '' } }),
+      done,
+    ]);
+    await h.loop.run('Notes');
+    expect(h.loop.state.notepad).toBeUndefined();
+    expect(h.loop.state.transcript.filter((entry) => entry.kind === 'action').map((entry) => entry.text)).toEqual(['Noted: draft line', 'Noted: Tidy: 2 books, £35.34 in all', 'Cleared its notes']);
+    expect(JSON.stringify(h.requests[2]!.messages.at(-1))).toContain('Tidy: 2 books');
+    expect(JSON.stringify(h.requests[3]!.messages)).not.toContain('Your notepad');
+  });
+
+  it('refuses a note past its size or a malformed call, and leaves the note as it was', async () => {
+    const h = harness([
+      callTurn({ id: 'n1', name: 'notepad', args: { append: 'kept' } }),
+      callTurn({ id: 'n2', name: 'notepad', args: { append: 'x'.repeat(MAX_NOTEPAD_CHARS) } }),
+      callTurn({ id: 'n3', name: 'notepad', args: { append: 'a', replace: 'b' } }),
+      done,
+    ]);
+    await h.loop.run('Notes');
+    expect(h.loop.state.notepad).toBe('kept');
+    const results = h.saved()!.history.filter((message) => message.role === 'tool').map((message) => JSON.parse(String(message.content)) as { error?: string });
+    expect(results[1]!.error).toMatch(/holds 8000 characters.*Rewrite it shorter with replace/);
+    expect(results[2]!.error).toMatch(/Invalid notepad call/);
+    expect(h.loop.state.transcript.filter((entry) => entry.kind === 'action')).toHaveLength(1);
+  });
+
+  it('is in the panel\'s state, for the owner to read', async () => {
+    const h = harness([callTurn({ id: 'n1', name: 'notepad', args: { append: 'Population: 2.1 million (2020)' } }), done]);
+    await h.loop.run('Note it');
+    expect(h.states.at(-1)!.notepad).toBe('Population: 2.1 million (2020)');
   });
 });

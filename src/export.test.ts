@@ -50,3 +50,19 @@ describe('conversationHtml', () => {
     expect(html).not.toMatch(/src="https?:/);
   });
 });
+
+describe('the agent\'s notepad in an export', () => {
+  const notepad = 'Blue mug: $12.40\n<script>alert(1)</script> from a page';
+
+  it('ends the Markdown as a quote, and is left out when there is none', () => {
+    expect(conversationMarkdown(transcript, 'T', notepad)).toMatch(/## Agent's notepad\n\n> Blue mug: \$12\.40\n> <script>alert\(1\)<\/script> from a page\n$/);
+    expect(conversationMarkdown(transcript, 'T')).not.toContain('notepad');
+  });
+
+  it('ends the HTML page, escaped like every other line', () => {
+    const html = conversationHtml(transcript, (id) => stored.get(id), 'T', notepad);
+    expect(html).toContain('<summary>🗒 Agent\'s notepad</summary><pre>Blue mug: $12.40\n&lt;script&gt;alert(1)&lt;/script&gt; from a page</pre>');
+    expect(html).not.toContain('<script>alert');
+    expect(conversationHtml(transcript, (id) => stored.get(id), 'T')).not.toContain('notepad');
+  });
+});

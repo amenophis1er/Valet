@@ -16,6 +16,7 @@ export const SYSTEM_PROMPT = [
   'Every tool result says what happened. "refused" means nothing was dispatched: observe and reconsider. completed "unknown" means the action may have happened: inspect the page and never repeat a submission. "skipped" means the call was not run.',
   'When you need a choice only the owner can make and you can name the choices, ask with ask_owner. For a login, MFA or anything else only the owner can give, stop and ask in plain words. Never ask for passwords; the owner signs in themselves.',
   'If the task needs something you cannot do, say so and stop. Never work around a missing capability by putting the owner\'s content on a site they did not name (paste services, file hosts, forms, shorteners).',
+  'Only your newest pages stay in full: older ones are cut to their address. When a page shows something the task needs, write it in your notepad before you move on, and work from the notepad instead of opening the page again.',
   'When the page\'s content is the task — summarize it, answer from it, quote or extract it — read it with the read action, every part you need, before you answer. An observation is cut to fit and is for acting; a screenshot is for what you need to see.',
   'Report only what a result you received shows. After an action, observe before saying what it did; if you have not checked an outcome, say so instead of assuming it. Never invent what a page says.',
   'When the task is done, answer with a short summary of what you did and what you found.',
@@ -45,17 +46,45 @@ const FULL_OBSERVATIONS = 3;
  */
 const READ_BUDGET = 120_000;
 
+/** Opening the same page this many times says the model is going in circles: the result tells it so. */
+const REVISITS = 3;
+const COMPACTED_PAGE = 'This page\'s content is no longer shown, to save space. Work from your notepad; open it again only for a detail you did not note.';
+
+/** A page's address for counting visits: the same page with another #fragment, or a trailing slash, is the same page. */
+function pageKey(url: unknown): string | undefined {
+  if (typeof url !== 'string') return undefined;
+  return url.replace(/#.*$/, '').replace(/\/+$/, '');
+}
+
 /**
  * Compact old page evidence: only the newest observations keep tree, targets
  * and tabs; older ones keep url and title. Everything else in a tool result —
  * completed (including "unknown"), refused, skipped, errors, notices — is kept,
- * so the model never forgets that an earlier outcome was uncertain.
+ * so the model never forgets that an earlier outcome was uncertain. A navigate
+ * to a page opened often before says how often, so a model that lost what it
+ * saw works from its notes instead of opening it again and again. Each message
+ * is changed only by what came before it, so the view of earlier turns stays
+ * the same as the conversation grows.
  */
 export function historyView(history: AIMessage[]): AIMessage[] {
   const withPages: number[] = [];
   const withText: number[] = [];
+  /** Tool results of a navigate, with how many times that page was opened by then. */
+  const visits = new Map<number, number>();
+  const navigates = new Map<string, string>();
+  const opened = new Map<string, number>();
   history.forEach((message, index) => {
+    for (const call of message.role === 'assistant' ? message.toolCalls ?? [] : []) {
+      const key = call.args?.['action'] === 'navigate' ? pageKey(call.args['url']) : undefined;
+      if (key) navigates.set(call.id, key);
+    }
     if (message.role !== 'tool' || typeof message.content !== 'string') return;
+    const page = message.toolCallId ? navigates.get(message.toolCallId) : undefined;
+    if (page) {
+      const count = (opened.get(page) ?? 0) + 1;
+      opened.set(page, count);
+      if (count >= REVISITS) visits.set(index, count);
+    }
     if (message.content.includes('"observation"')) withPages.push(index);
     if (message.content.includes('"read":{"url":')) withText.push(index);
   });
@@ -72,13 +101,15 @@ export function historyView(history: AIMessage[]): AIMessage[] {
     if (message.role !== 'tool' || typeof message.content !== 'string') return message;
     const oldPage = withPages.includes(index) && !keepPages.has(index);
     const oldText = withText.includes(index) && !keepText.has(index);
-    if (!oldPage && !oldText) return message;
+    const revisit = visits.get(index);
+    if (!oldPage && !oldText && revisit === undefined) return message;
     try {
       const result = JSON.parse(message.content) as Record<string, unknown>;
       const observation = result['observation'] as { id?: string; url?: string; title?: string } | undefined;
-      if (oldPage && observation) result['observation'] = { url: observation.url, title: observation.title, compacted: true };
+      if (oldPage && observation) result['observation'] = { url: observation.url, title: observation.title, compacted: COMPACTED_PAGE };
       const read = result['read'] as { url?: string; title?: string; part?: number; parts?: number } | undefined;
-      if (oldText && read) result['read'] = { url: read.url, title: read.title, part: read.part, parts: read.parts, compacted: 'You read this part earlier; its text is no longer shown, to save space. Do not read it again just to have it: work from what you noted. Read it again only for a detail the task needs.' };
+      if (oldText && read) result['read'] = { url: read.url, title: read.title, part: read.part, parts: read.parts, compacted: 'You read this part earlier; its text is no longer shown, to save space. Do not read it again just to have it: work from your notepad. Read it again only for a detail the task needs.' };
+      if (revisit !== undefined) result['revisited'] = `You have now opened this page ${revisit} times. If you came back for something you saw before, put what you need from it in your notepad this time and work from there; do not open it again for the same thing.`;
       return { ...message, content: JSON.stringify(result) };
     } catch {
       return message;

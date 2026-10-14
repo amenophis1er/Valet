@@ -9,8 +9,8 @@ import type { Media, TranscriptEntry } from './loop/protocol.js';
 
 const escapeHtml = (text: string) => text.replace(/[&<>"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[char] ?? char));
 
-/** The whole conversation as Markdown: what was said, and the steps as a list under it. */
-export function conversationMarkdown(transcript: TranscriptEntry[], title = 'Valet conversation'): string {
+/** The whole conversation as Markdown: what was said, the steps as a list under it, and the agent's notepad at the end. */
+export function conversationMarkdown(transcript: TranscriptEntry[], title = 'Valet conversation', notepad?: string): string {
   const lines: string[] = [`# ${title}`, ''];
   for (const entry of transcript) {
     switch (entry.kind) {
@@ -26,6 +26,7 @@ export function conversationMarkdown(transcript: TranscriptEntry[], title = 'Val
       case 'notice': lines.push(`- _${entry.text}_`); break;
     }
   }
+  if (notepad) lines.push('', '## Agent\'s notepad', '', ...notepad.split('\n').map((line) => `> ${line}`), '');
   return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()}\n`;
 }
 
@@ -44,7 +45,7 @@ export type MediaLookup = (id: string) => Media | undefined;
  * attached images as data URLs, files as text (a PDF as a link to download).
  * Opens anywhere, prints as long as it is.
  */
-export function conversationHtml(transcript: TranscriptEntry[], media: MediaLookup, title = 'Valet conversation'): string {
+export function conversationHtml(transcript: TranscriptEntry[], media: MediaLookup, title = 'Valet conversation', notepad?: string): string {
   const parts: string[] = [];
   const image = (id: string, alt: string) => {
     const stored = media(id);
@@ -88,6 +89,7 @@ export function conversationHtml(transcript: TranscriptEntry[], media: MediaLook
     }
   }
   flush();
+  if (notepad) parts.push(`<details class="file notepad"><summary>🗒 Agent's notepad</summary><pre>${escapeHtml(notepad)}</pre></details>`);
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)}</title>
 <style>
