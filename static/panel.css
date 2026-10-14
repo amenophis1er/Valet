@@ -249,10 +249,10 @@ input[type=checkbox] { width: auto; height: auto; }
 .ask-head svg { width: 14px; height: 14px; stroke-width: 2; }
 .ask-text { font-size: var(--v-fs-sm); line-height: var(--v-lh-sm); font-weight: 650; }
 .ask-options { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
-.ask-option { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; min-height: 40px; height: auto; padding: 8px 12px; text-align: left; white-space: normal; border-radius: var(--v-radius-md); }
-.ask-option .label { display: flex; align-items: center; gap: 8px; font-weight: 600; overflow-wrap: anywhere; }
+.ask-option { display: flex; flex: none; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; min-height: 40px; height: auto; padding: 8px 12px; text-align: left; white-space: normal; border-radius: var(--v-radius-md); }
+.ask-option .label { display: flex; align-items: flex-start; gap: 8px; font-weight: 600; overflow-wrap: anywhere; }
 .ask-option .hint { font-size: var(--v-fs-xs); line-height: 17px; font-weight: 400; color: var(--v-text-muted); overflow-wrap: anywhere; }
-.ask-option .tag { font-size: var(--v-fs-2xs); line-height: var(--v-lh-2xs); font-weight: 600; padding: 1px 6px; border-radius: var(--v-radius-pill); background: var(--v-surface-sunk); color: var(--v-text-muted); }
+.ask-option .tag { flex: none; white-space: nowrap; font-size: var(--v-fs-2xs); line-height: var(--v-lh-2xs); font-weight: 600; padding: 1px 6px; border-radius: var(--v-radius-pill); background: var(--v-surface-sunk); color: var(--v-text-muted); }
 .ask-option[aria-pressed="true"] { background: var(--v-accent-soft); border-color: var(--v-accent-line); }
 .ask-other { border-style: dashed; }
 .ask-other .label { font-weight: 500; color: var(--v-text-muted); }

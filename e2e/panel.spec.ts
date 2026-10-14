@@ -841,6 +841,41 @@ test('copies an answer and the whole conversation, and saves it as one HTML file
   await panel.close();
 });
 
+test('a question with many long options scrolls: no option is squeezed, the Suggested tag stays on one line', async () => {
+  const options = [
+    { label: 'Remove empty/tiny labels: WhatsApp (0), DeltaChat (1), cc-automated (2)', hint: '0 conversations (empty), 1 conversation, and 2 conversations respectively' },
+    { label: 'Remove small/old labels: SMS API (4) & Africa-Trip (7)', hint: '4 conversations and 7 conversations respectively' },
+    { label: 'Remove legacy phone sync labels: Call log (1,765) & SMS (1,023)', hint: 'Old phone backup labels; removing a label does not delete the emails' },
+    { label: "Rename 'API OHV' to 'API OVH' (fix typo)", hint: "Currently named 'API OHV' (919 conversations from support@ovh.com)" },
+    { label: 'Apply recommended productivity settings (Inbox, General & Sidebar)', hint: "Turn on Send & Archive, Auto-advance, Don't override filters, Show if unread" },
+  ];
+  model.script([
+    () => ({ tool: 'ask_owner', call: { question: 'Which label cleanups would you like me to apply?', options, multi: true } }),
+    () => ({ text: 'Done.' }),
+  ]);
+  const panel = await openPanel();
+  try {
+    await panel.setViewportSize({ width: 400, height: 760 });
+    await panel.getByRole('button', { name: 'New conversation' }).click();
+    await panel.locator('#goal').fill('Clean up my labels');
+    await panel.getByRole('button', { name: 'Send' }).click();
+    const ask = panel.getByRole('group', { name: 'Which label cleanups would you like me to apply?' });
+    await expect(ask).toBeVisible({ timeout: 30_000 });
+    await panel.screenshot({ path: test.info().outputPath('long-options.png') });
+    const rows = await ask.locator('.ask-option:not(.ask-other)').evaluateAll((buttons) => buttons.map((button) => ({ overflow: button.scrollHeight - button.clientHeight })));
+    expect(rows).toHaveLength(options.length);
+    for (const row of rows) expect(row.overflow).toBeLessThanOrEqual(1);
+    const tag = ask.locator('.ask-option .tag').first();
+    await expect(tag).toHaveText('Suggested');
+    expect((await tag.boundingBox())!.height).toBeLessThan(24);
+    // The list scrolls to reach the last option.
+    expect(await ask.locator('.ask-options').evaluate((list) => list.scrollHeight > list.clientHeight)).toBe(true);
+    await ask.getByRole('button', { name: 'Stop' }).click();
+  } finally {
+    await panel.close();
+  }
+});
+
 test('a question from the agent: picked with one click, or answered by typing, and never shown as an approval', async () => {
   const answerOf = (messages: Array<{ role: string; content?: string | null }>) => String(messages.filter((message) => message.role === 'tool').at(-1)?.content ?? '');
   model.script([
