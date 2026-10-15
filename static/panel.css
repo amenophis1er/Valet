@@ -125,6 +125,10 @@ input[type=checkbox] { width: auto; height: auto; }
 .owner-attachments .shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .owner-attachments .chip-file { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px 0 4px; border-radius: var(--v-radius-md); border: 1px solid var(--v-line); background: var(--v-surface-raised); font-size: var(--v-fs-xs); max-width: 200px; }
 .owner-attachments .chip-file span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A long message folds to its first lines, fading out, with Show more under it. */
+.owner.long:not(.open) .owner-text { max-height: calc(7 * var(--v-lh-sm, 20px)); overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent); mask-image: linear-gradient(to bottom, #000 60%, transparent); }
+.owner .show-more { display: block; margin: 4px 0 0 auto; padding: 0; border: 0; background: none; font: inherit; font-size: var(--v-fs-xs); font-weight: 600; color: var(--v-accent); cursor: pointer; white-space: nowrap; }
+.owner .show-more:hover { text-decoration: underline; }
 .notice { font-size: var(--v-fs-xs); line-height: 17px; font-style: italic; color: var(--v-text-muted); padding-left: 2px; }
 
 /* An answer: Markdown, with Copy on hover. */
@@ -156,6 +160,11 @@ input[type=checkbox] { width: auto; height: auto; }
 .agent button.copy svg { width: 14px; height: 14px; stroke-width: 2; }
 .agent:hover button.copy, .agent:focus-within button.copy, .agent button.copy.done { opacity: 1; }
 .agent button.copy.done { color: var(--v-ok); }
+/* A code block or quote with a copy of its own, in its top right corner; the answer's copy stays the answer's. */
+.agent .block { position: relative; }
+.agent .block > button.copy { position: absolute; top: 6px; right: 6px; }
+.agent .block > pre, .agent .block > blockquote { margin-bottom: 10px; }
+.agent .block:hover > button.copy, .agent .block:focus-within > button.copy, .agent .block > button.copy.done { opacity: 1; }
 @media (hover: none) { .agent button.copy { opacity: 1; } }
 
 /* Steps: a quiet row each, with a status dot; details open on click. */
@@ -173,10 +182,11 @@ input[type=checkbox] { width: auto; height: auto; }
 .step .refused, .step .skipped { color: var(--v-warn); }
 .step .unknown, .step .error { color: var(--v-danger); }
 .step .detail { margin: 0 0 4px 23px; font-size: var(--v-fs-xs); line-height: 17px; color: var(--v-text-muted); white-space: pre-wrap; }
-.step .shot { display: block; width: min(220px, calc(100% - 23px)); min-height: 0; margin: 4px 0 4px 23px; padding: 0; border-radius: var(--v-radius-md); overflow: hidden; border: 1px solid var(--v-line); background: #fff; cursor: zoom-in; }
-.step .shot img { display: block; width: 100%; height: auto; }
-.step .shot:hover { border-color: var(--v-accent-line); background: #fff; }
-.shot-gone { margin: 2px 0 2px 23px; font-size: var(--v-fs-xs); color: var(--v-text-muted); font-style: italic; }
+/* A step's screenshot: a small thumbnail at the end of its row, the top of the page showing; click opens it large. */
+.step .shot, .activity .shots .shot { display: block; flex: none; width: 56px; height: 40px; min-height: 0; margin: 2px 0 2px auto; padding: 0; border-radius: var(--v-radius-sm); overflow: hidden; border: 1px solid var(--v-line); background: #fff; cursor: zoom-in; }
+.step .shot img, .activity .shots .shot img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.step .shot:hover, .activity .shots .shot:hover { border-color: var(--v-accent-line); background: #fff; }
+.shot-gone { margin-left: auto; flex: none; font-size: var(--v-fs-xs); color: var(--v-text-muted); font-style: italic; }
 
 /* A stretch of steps folded into one line: how many, the latest that mattered, and any trouble. */
 .activity > details > summary {
@@ -198,6 +208,10 @@ input[type=checkbox] { width: auto; height: auto; }
 .activity .issue { flex: none; display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: var(--v-radius-pill); font-size: var(--v-fs-2xs); line-height: var(--v-lh-2xs); font-weight: 600; }
 .activity .issue.refused { background: var(--v-warn-soft); color: var(--v-warn); }
 .activity .issue.error { background: var(--v-danger-soft); color: var(--v-danger); }
+/* The stretch's screenshots, up to four, small on its line; the rest are on their steps once unfolded. */
+.activity .shots { flex: none; display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; }
+.activity .shots .shot { margin: 0; }
+.activity .more-shots { font-size: var(--v-fs-2xs); line-height: var(--v-lh-2xs); font-weight: 600; color: var(--v-text-muted); font-variant-numeric: tabular-nums; }
 .activity-steps { list-style: none; margin: 2px 0 2px 8px; padding: 0 0 0 12px; border-left: 1px solid var(--v-line); display: flex; flex-direction: column; gap: 2px; }
 .activity-steps .notice { padding-left: 0; }
 

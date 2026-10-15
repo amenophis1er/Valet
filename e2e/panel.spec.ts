@@ -335,14 +335,16 @@ test('takes a screenshot with the unapproved frame painted over, and makes a fil
   // The model got the image (Chat Completions carries it in a user message after the tool result).
   expect(JSON.stringify(model.requests.at(-1)!.messages)).toContain('data:image/jpeg;base64,');
 
-  // The thumbnail is under the step; the partner widget (another, unapproved site) is grey in it.
-  const thumb = panel.locator('.step .shot img');
+  // The thumbnail is small on the folded steps' line (once only, not again on its step); the partner widget (another, unapproved site) is grey in it.
+  const thumb = panel.locator('.shot img');
   await expect(thumb).toHaveCount(1);
+  await expect(panel.locator('.activity .shots .shot img')).toHaveCount(1);
   await expect.poll(() => thumb.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
   await expectGreyOverWidget(thumb, `${fixture.main}/shop`);
 
-  // Click opens it large, in a window of its own beside the browser.
-  const [viewer] = await Promise.all([context.waitForEvent('page'), panel.locator('.step .shot').click()]);
+  // Click opens it large, in a window of its own beside the browser, without unfolding the steps.
+  const [viewer] = await Promise.all([context.waitForEvent('page'), panel.locator('.shot').click()]);
+  await expect(panel.locator('.activity > details')).not.toHaveAttribute('open', '');
   await expect(viewer).toHaveURL(/viewer\.html\?id=shot-/);
   await expect.poll(() => viewer.locator('#image').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
   await expect(viewer.getByRole('button', { name: 'Download' })).toBeVisible();
@@ -394,7 +396,7 @@ test('paints over an unapproved frame hidden in a closed shadow root', async () 
   const panel = await runGoal('Screenshot the shadow shop');
   await panel.getByRole('button', { name: 'Allow once' }).click();
   await expect(panel.locator('.agent').last()).toHaveText('Took it.', { timeout: 30_000 });
-  const thumb = panel.locator('.step .shot img');
+  const thumb = panel.locator('.shot img');
   await expect(thumb).toHaveCount(1);
   await expect.poll(() => thumb.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
   await expectGreyOverWidget(thumb, `${fixture.main}/shadow`);
@@ -813,7 +815,7 @@ test('copies an answer and the whole conversation, and saves it as one HTML file
   await panel.locator('#goal').fill('Look around');
   await panel.getByRole('button', { name: 'Send' }).click();
   await expect(panel.locator('.agent').last()).toContainText('what I saw', { timeout: 30_000 });
-  await expect(panel.locator('.step .shot img')).toBeVisible();
+  await expect(panel.locator('.shot img')).toBeVisible();
 
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await panel.getByRole('button', { name: 'Copy this answer' }).click();
@@ -1129,6 +1131,52 @@ test('saves a run trace: every model turn, the call with its arguments and resul
   expect(call).toMatchObject({ args: { action: 'observe' }, outcome: 'ok' });
   expect(call.result.observation?.url).toBe(`${fixture.main}/shop?t=trace`);
   expect(trace.history.length).toBeGreaterThan(2);
+  await shop.close();
+  await panel.close();
+});
+
+test('a long message folds with Show more, screenshots sit small on the steps\' line, and a code block copies on its own', async () => {
+  const goal = ['Compare the mugs in the fixture shop.', ...Array.from({ length: 12 }, (_, i) => `Step ${i + 1}: look at one mug, note its price and whether it is in stock, then move to the next one.`)].join('\n');
+  model.script([
+    ...Array.from({ length: 5 }, () => () => ({ call: { action: 'screenshot' } })),
+    () => ({ text: 'Here is the result:\n\n```json\n{"mug": "blue", "price": "$12.40"}\n```\n\n> The blue one is the cheapest.' }),
+  ]);
+  const shop = await context.newPage();
+  await shop.goto(`${fixture.main}/shop`);
+  const panel = await openPanel();
+  await panel.getByRole('button', { name: 'New conversation' }).click();
+  await shop.bringToFront();
+  await expect(panel.locator('#tab-title')).toHaveText('Fixture shop');
+  await panel.locator('#goal').fill(goal);
+  await panel.getByRole('button', { name: 'Send' }).click();
+  await expect(panel.locator('.agent').last()).toContainText('Here is the result', { timeout: 30_000 });
+
+  // The long message is folded, its text whole underneath; Show more opens it and it stays open across renders.
+  const owner = panel.locator('.owner');
+  await expect(owner).toHaveClass(/long/);
+  await expect(owner).not.toHaveClass(/open/);
+  await expect(owner.locator('.owner-text')).toHaveText(goal);
+  await panel.getByRole('button', { name: 'Show more' }).click();
+  await expect(owner).toHaveClass(/open/);
+  await expect(panel.getByRole('button', { name: 'Show less' })).toBeVisible();
+
+  // Five screenshots: four small on the folded line, "+1" for the one on its step once unfolded.
+  const fold = panel.locator('.activity > details');
+  await expect(fold.locator('summary .shots .shot img')).toHaveCount(4);
+  await expect(fold.locator('summary .more-shots')).toHaveText('+1');
+  await expect(fold.locator('.activity-steps .shot img')).toBeHidden(); // on its step, out of sight while folded
+  await fold.locator('> summary').click();
+  await expect(fold).toHaveAttribute('open', '');
+  await expect(fold.locator('.activity-steps .step .shot img')).toHaveCount(1);
+  if (process.env['SCREENSHOTS']) await panel.screenshot({ path: path.join(process.env['SCREENSHOTS'], 'polish.png') });
+
+  // The code block and the quote each copy their own text; the answer's copy is still there.
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await panel.getByRole('button', { name: 'Copy this code' }).click();
+  await expect(panel.getByRole('button', { name: 'Copied' })).toBeVisible();
+  expect((await panel.evaluate(() => navigator.clipboard.readText())).trim()).toBe('{"mug": "blue", "price": "$12.40"}');
+  await expect(panel.getByRole('button', { name: 'Copy this quote' })).toHaveCount(1);
+  await expect(panel.getByRole('button', { name: 'Copy this answer' })).toHaveCount(1);
   await shop.close();
   await panel.close();
 });
