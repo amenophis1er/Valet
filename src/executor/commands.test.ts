@@ -1014,7 +1014,8 @@ describe('a tab a page opened by itself', () => {
   it('from one of the session\'s tabs becomes the session\'s, grouped, and is where it works next', async () => {
     const fake = fakeChrome();
     let n = 0;
-    const commands = new BrowserCommands(fake.chrome, { uuid: () => `uuid-${n += 1}-xxxxxxxxxx`, anchor: () => 999 });
+    let clock = 1_000_000;
+    const commands = new BrowserCommands(fake.chrome, { uuid: () => `uuid-${n += 1}-xxxxxxxxxx`, anchor: () => 999, now: () => clock });
     const origin = { id: 999, url: 'https://example.test/origin', title: 'Origin', status: 'complete', groupId: -1, windowId: 1, active: true, index: 0, pinned: false };
     fake.tabs.set(origin.id, origin);
     await commands.run(command('navigate', { url: 'https://example.test/' }));
@@ -1028,6 +1029,17 @@ describe('a tab a page opened by itself', () => {
     // Not twice, and never for an opener no session has.
     expect(await commands.claimOpened(popup.id, agentTab!)).toBe(false);
     expect(await commands.claimOpened(778, 12345)).toBe(false);
+    // Well after the last action, a tab opened from the agent's page is the owner's own (⌘-click, "open in new tab").
+    clock += 5_000;
+    const owners = { id: 778, url: 'https://example.test/mine', title: 'Mine', status: 'complete', groupId: -1, windowId: 1, active: true, index: 3, pinned: false };
+    fake.tabs.set(owners.id, owners);
+    expect(await commands.claimOpened(owners.id, agentTab!)).toBe(false);
+    expect(commands.tabIds('s1')).toEqual([agentTab, popup.id]);
+    // Right after an action again, it is the page's doing.
+    await commands.run(command('navigate', { url: 'https://example.test/next' }));
+    const later = { id: 779, url: 'https://example.test/popup2', title: 'Popup 2', status: 'complete', groupId: -1, windowId: 1, active: true, index: 4, pinned: false };
+    fake.tabs.set(later.id, later);
+    expect(await commands.claimOpened(later.id, popup.id)).toBe(true);
   });
 });
 
