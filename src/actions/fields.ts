@@ -97,7 +97,12 @@ export const FIELDS = {
   },
   value: {
     zod: z.string().max(10_000).optional(),
-    wire: { type: 'string', maxLength: 10_000, description: 'Required for fill (the text) and select (an option label, text or value).' },
+    wire: { type: 'string', maxLength: 10_000, description: 'Required for fill (the text) and select (an option label, text or value); dialog takes it as the text to answer a prompt with.' },
+  },
+  response: {
+    exclusive: true,
+    zod: z.enum(['accept', 'dismiss']).optional(),
+    wire: { type: 'string', enum: ['accept', 'dismiss'], description: 'Required for dialog: "accept" presses OK on the page\'s open alert, confirm or prompt, "dismiss" presses Cancel.' },
   },
   key: {
     zod: z.enum(KEYS).optional(),

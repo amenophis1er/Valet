@@ -83,7 +83,8 @@ export function roleOf(el: Element): string {
   const tag = el.tagName.toLowerCase();
   const type = el.getAttribute('type')?.toLowerCase() ?? '';
   if (el.getAttribute('role')) return el.getAttribute('role')!;
-  if (tag === 'input') return ['checkbox', 'radio'].includes(type) ? type : 'textbox';
+  // An input that submits or resets is a button to the model, never a field to type in next to Cancel.
+  if (tag === 'input') return ['checkbox', 'radio'].includes(type) ? type : ['submit', 'button', 'reset', 'image'].includes(type) ? 'button' : 'textbox';
   return TAG_ROLES[tag] ?? tag;
 }
 

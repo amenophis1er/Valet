@@ -33,6 +33,19 @@ export async function startFixture(): Promise<Fixture> {
         </main>`));
       return;
     }
+    if (req.url?.startsWith('/dialogs')) {
+      // Native dialogs, which block the page until answered; and a submit input, which is a button, not a field.
+      res.end(page('Dialogs', `<main><h1>Dialogs</h1>
+        <button id="prompt" type="button">Ask for a price</button>
+        <button id="confirm" type="button">Ask to confirm</button>
+        <form onsubmit="return false"><input name="zip"><input type="submit" value="Continue"></form>
+        <p id="result">nothing yet</p>
+        <script>
+          document.getElementById('prompt').onclick = () => { const v = prompt('Your price?', '0'); document.getElementById('result').textContent = v === null ? 'Cancelled' : 'You entered: ' + v; };
+          document.getElementById('confirm').onclick = () => { document.getElementById('result').textContent = confirm('Sure?') ? 'Confirmed' : 'Declined'; };
+        </script></main>`));
+      return;
+    }
     if (req.url?.startsWith('/suggest')) {
       // Counts real key presses per field, as an autocomplete widget would see them.
       res.end(page('Suggest', `<main><h1>Suggest</h1>

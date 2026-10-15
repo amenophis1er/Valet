@@ -118,8 +118,11 @@ function locate(ref: string, options: { focus?: boolean; clear?: boolean; mark?:
   if (options.mark && checkable) recordEdit(element);
   if (options.clear && 'value' in element) {
     recordEdit(element);
-    input.value = '';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
+    // Select what is there rather than empty it: the text inserted next replaces the selection. A framework
+    // that owns the field's value (React, Vue) would put the old value back after `value = ''`, and the
+    // insertion would land on top of it.
+    if (typeof (input as { select?: unknown }).select === 'function') input.select();
+    else { input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })); }
   }
   const rect = element.getBoundingClientRect();
   const setByValue = element.tagName.toLowerCase() === 'input' && BY_VALUE.has((input.type || '').toLowerCase());

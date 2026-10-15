@@ -36,8 +36,15 @@ export function goalMessage(goal: string, handed: { title: string; url: string }
   return `${goal}\n\n(The owner is on "${titleOf(handed)}" — ${handed.url}. You are working in that tab: observe it first.)`;
 }
 
-/** How many of the newest observations keep their full page content. */
+/** How many of the newest observations keep their full page content, whatever their size. */
 const FULL_OBSERVATIONS = 3;
+/**
+ * Older observations stay in full too while they fit in this many characters
+ * together, newest first. Small pages (a form, a dialog's result line) cost
+ * little, and cutting them made a model redo steps to see a result again; a
+ * run through big pages still keeps only the newest few.
+ */
+const PAGE_BUDGET = 60_000;
 /**
  * How much page text (read) stays in full, newest first: a long article, about
  * ten parts. Past it the oldest parts drop to a line saying what they were; a
@@ -88,7 +95,13 @@ export function historyView(history: AIMessage[]): AIMessage[] {
     if (message.content.includes('"observation"')) withPages.push(index);
     if (message.content.includes('"read":{"url":')) withText.push(index);
   });
-  const keepPages = new Set(withPages.slice(-FULL_OBSERVATIONS));
+  const keepPages = new Set<number>();
+  let pageChars = 0;
+  for (const index of [...withPages].reverse()) {
+    pageChars += String(history[index]!.content).length;
+    if (keepPages.size >= FULL_OBSERVATIONS && pageChars > PAGE_BUDGET) break;
+    keepPages.add(index);
+  }
   const keepText = new Set<number>();
   let spent = 0;
   for (const index of [...withText].reverse()) {

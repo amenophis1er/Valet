@@ -23,7 +23,7 @@
 import type { TabInfo, WorkerChrome } from './chrome.js';
 import { Cancellation, PreconditionError, type Command, type CommandResult, type Observation, type ObservedTarget } from './protocol.js';
 import type { SubmitFingerprint } from './content.js';
-import { DEBUGGER_KEPT_OUT, DebuggerKeptOut, type Driver, type Pace, type Ref } from './driver.js';
+import { DEBUGGER_KEPT_OUT, DebuggerKeptOut, type Driver, type OpenDialog, type Pace, type Ref } from './driver.js';
 import { INPUT, type InputName } from './input/index.js';
 import { paintOverlay } from './overlay.js';
 import { cut } from './tree.js';
@@ -57,6 +57,8 @@ export interface ExecutorObservation extends Observation { frames: FrameInfo[] }
 const GROUP_TITLE = 'valet';
 /** Chrome's words when a frame of another extension is in the tab: its debugger stays out of the whole tab while that frame is there. */
 const OTHER_EXTENSION = /chrome-extension:\/\/ URL of different extension/i;
+/** Chrome's words when the frame appears mid-action (at the first keystroke, as a password manager's menu does): the attachment is taken away under the command. */
+const DETACHED_UNDER_COMMAND = /Detached while handling command|Debugger is not attached/i;
 
 /** The page under a ref is not the page the ref was read from. */
 const MOVED = 'This page has changed since that observation. Observe again.';
@@ -77,6 +79,21 @@ const SETTLE_STEP_MS = 50;
 const OBSERVE_RETRY_MS = [500, 1_000, 2_000];
 /** How long the agent's cursor takes to glide to a target before it acts. */
 const CURSOR_MS = 350;
+
+/** How long Page.enable gets to come back before the renderer is taken to be held by a dialog. */
+const ENABLE_TIMEOUT_MS = 2_000;
+/** How long an input command gets before the page is taken to be held by a dialog nobody heard open. */
+const INPUT_TIMEOUT_MS = 10_000;
+const UNANSWERED = Symbol('unanswered');
+/** The words for a dialog that opened while nothing was attached: its real text was never heard. */
+const UNSEEN_DIALOG = 'A dialog opened while the agent was not watching, so its text is not known';
+
+/** A dialog, as the model is told of it: what kind, its words (the page's), and a prompt's default. */
+function describeDialog(open: OpenDialog): string {
+  const quoted = JSON.stringify(open.message.slice(0, 500));
+  const suffix = open.type === 'prompt' && open.defaultValue ? ` (default answer ${JSON.stringify(open.defaultValue.slice(0, 200))})` : '';
+  return `The page has a ${open.type} dialog open and waits for it: ${quoted}${suffix}.`;
+}
 
 /**
  * How the agent's input moves: `fast` does each action at once; `natural`
@@ -179,6 +196,17 @@ export class BrowserCommands implements Executor {
   #random: () => number;
   /** Where the real mouse last was in each tab, so a natural move starts from there. */
   #mouse = new Map<number, { x: number; y: number }>();
+  /**
+   * The alert, confirm or prompt each tab has open, from the Page events of the
+   * attached debugger. While one is open the page takes no input and runs no
+   * script: an observation says only that, and other actions on the tab are
+   * refused until the dialog action answers it.
+   */
+  #dialogs = new Map<number, OpenDialog>();
+  /** Who is waiting to hear that a dialog opened on a tab: a debugger command in flight there, which the dialog would otherwise hold up. */
+  #dialogWaiters = new Map<number, Set<() => void>>();
+  /** Tabs whose open dialog holds the debugger attached (one count of #attached), so the dialog outlives the action that opened it and its closing is heard. */
+  #dialogHolds = new Set<number>();
 
   constructor(chrome: WorkerChrome, options: { uuid?: () => string; contentFile?: string; wait?: (ms: number) => Promise<void>; beforeNavigate?: (tabId: number) => Promise<void>; imaging?: Imaging; random?: () => number;
     /** The tab a session's conversation belongs to: its new tabs open beside it when no tab was handed over. */
@@ -196,6 +224,26 @@ export class BrowserCommands implements Executor {
     // yellow bar, or another client attached. The next command attaches again.
     chrome.debugger.onDetach.addListener((source) => {
       if (source.tabId !== undefined) this.#attached.delete(source.tabId);
+    });
+    // A dialog opening or closing on a tab, while the debugger is attached there with Page enabled.
+    chrome.debugger.onEvent.addListener((source, method, params) => {
+      const tabId = source.tabId;
+      if (tabId === undefined) return;
+      if (method === 'Page.javascriptDialogOpening') {
+        const opening = (params ?? {}) as { type?: string; message?: string; defaultPrompt?: string };
+        const type = (['alert', 'confirm', 'prompt', 'beforeunload'] as const).find((known) => known === opening.type) ?? 'alert';
+        // Chrome sends an empty defaultPrompt for every kind; only a prompt's own default is worth telling.
+        this.#dialogs.set(tabId, { type, message: String(opening.message ?? ''), ...(type === 'prompt' && opening.defaultPrompt ? { defaultValue: String(opening.defaultPrompt) } : {}) });
+        // The dialog holds the attachment: detaching with it up would let Chrome close it unanswered, and its closing would go unheard.
+        if ((this.#attached.get(tabId) ?? 0) > 0 && !this.#dialogHolds.has(tabId)) {
+          this.#dialogHolds.add(tabId);
+          this.#attached.set(tabId, (this.#attached.get(tabId) ?? 0) + 1);
+        }
+        for (const wake of this.#dialogWaiters.get(tabId) ?? []) wake();
+      } else if (method === 'Page.javascriptDialogClosed') {
+        this.#dialogs.delete(tabId);
+        void this.#releaseDialogHold(tabId);
+      }
     });
     this.#uuid = options.uuid ?? (() => crypto.randomUUID());
     this.#contentFile = options.contentFile ?? 'content.js';
@@ -258,6 +306,11 @@ export class BrowserCommands implements Executor {
   async #dispatch(command: Command, cancel: Cancellation): Promise<CommandResult> {
     cancel.check();
     // An input action (input/*): natural pace takes a beat first, as a person would, before anything is dispatched.
+    // A page with a dialog open takes no input and runs no script until it is answered: nothing but the answer goes to it.
+    if (command.name !== 'dialog' && (command.name in INPUT || command.name === 'screenshot')) {
+      const open = this.#openDialog(command.session);
+      if (open) throw new PreconditionError(`${describeDialog(open)} Answer it with the dialog action first.`);
+    }
     if (command.name in INPUT) {
       if (this.#pace === 'natural') await this.#pause(500, 1500, cancel);
       return INPUT[command.name as InputName](this.#driver, command, cancel);
@@ -279,6 +332,13 @@ export class BrowserCommands implements Executor {
    */
   #driver: Driver = this.#makeDriver();
 
+  /** The dialog open on the session's current tab, if the executor saw one open there. */
+  #openDialog(sessionId: string): OpenDialog | undefined {
+    const session = this.#sessions.get(sessionId);
+    const tabId = session?.active ? session.tabs.get(session.active) : undefined;
+    return tabId === undefined ? undefined : this.#dialogs.get(tabId);
+  }
+
   #makeDriver(): Driver {
     // The getter reads the executor's pace at the moment of each step.
     const executor = this;
@@ -299,7 +359,39 @@ export class BrowserCommands implements Executor {
     observedTab: (sessionId) => this.#observedTab(sessionId),
     ready: async (tabId) => { await this.#inject(tabId); },
     inTab: async (tabId, func, args) => { await this.#chrome.scripting.executeScript({ target: { tabId }, func, args }); },
+    dialog: (tabId) => this.#dialogs.get(tabId),
+    answerDialog: (tabId, accept, text) => this.#answerDialog(tabId, accept, text),
     };
+  }
+
+  /**
+   * Answer the tab's dialog through the debugger. One the executor never saw
+   * open (it opened while nothing was attached) is answered just the same;
+   * Chrome says when there is none, and that is a plain refusal.
+   */
+  async #answerDialog(tabId: number, accept: boolean, text: string | undefined): Promise<void> {
+    const before = await this.#chrome.tabs.get(tabId).catch(() => undefined);
+    try {
+      await this.#withDebugger(tabId, (send) => send('Page.handleJavaScriptDialog', { accept, ...(accept && text !== undefined ? { promptText: text } : {}) }));
+    } catch (error) {
+      const said = error instanceof Error ? error.message : String(error);
+      if (/no dialog/i.test(said)) {
+        this.#dialogs.delete(tabId);
+        await this.#releaseDialogHold(tabId);
+        throw new PreconditionError('No dialog is open on this page.');
+      }
+      throw error;
+    }
+    this.#dialogs.delete(tabId);
+    await this.#releaseDialogHold(tabId);
+    // Accepting a confirm, or a beforeunload, may let a navigation go: wait for it as after a click.
+    if (before) await this.#settle(tabId, before);
+  }
+
+  /** The dialog no longer holds the attachment (answered, or closed some other way): let go of its count. */
+  async #releaseDialogHold(tabId: number): Promise<void> {
+    if (!this.#dialogHolds.delete(tabId)) return;
+    await this.#releaseDebugger(tabId);
   }
 
   /** The tab of the session's latest observation, still on the page that was read (scroll aims at no element). */
@@ -902,6 +994,21 @@ export class BrowserCommands implements Executor {
     const tab = await this.#ownTab(session, key);
     const tabId = tab.id!;
     cancel.check();
+    // A dialog holds the page: no script runs in it, so there is no tree to read, and the observation says what there is to do.
+    const dialog = this.#dialogs.get(tabId);
+    if (dialog) {
+      const generation = session.generation + 1;
+      session.generation = generation;
+      this.#refs.set(sessionId, new Map());
+      this.#frameInfos.set(sessionId, []);
+      session.observed = { generation, tabKey: key, url: normalize(tab.url ?? '') };
+      const tree = `${describeDialog(dialog)} The page takes no other input until it is answered: use the dialog action with response "accept" or "dismiss"${dialog.type === 'prompt' ? ', and value for the text to answer with' : ''}.`;
+      return {
+        id: this.#uuid(), url: tab.url ?? '', title: tab.title ?? '', tree, targets: [], capturedAt: new Date().toISOString(),
+        tabs: live.map(({ id, tab: info }) => ({ id, url: info.url ?? '', title: info.title ?? '' })),
+        frames: [], dialog: { type: dialog.type, message: dialog.message, ...(dialog.defaultValue !== undefined ? { defaultValue: dialog.defaultValue } : {}) },
+      };
+    }
     const { frames, top } = await this.#readFrames(tabId, cancel);
     // A navigation wiped the overlay: paint it again while the run is on.
     if (this.#highlighted.has(sessionId)) await this.#paint(tabId, { halo: true });
@@ -1050,8 +1157,44 @@ export class BrowserCommands implements Executor {
       } finally {
         this.#attaching.delete(tabId);
       }
+      // Page events, for a dialog opening while the agent acts: without them a click that opens one looks like a click that did nothing.
+      // The renderer answers this too, and a renderer held by a dialog never does: with one known open it is skipped, and one
+      // that opened unseen (from a timer, while nothing was attached) shows up as the enable not coming back.
+      if (!this.#dialogs.has(tabId)) {
+        const enabled = this.#chrome.debugger.sendCommand({ tabId }, 'Page.enable').then(() => true, () => true);
+        const held = new Promise<false>((resolve) => setTimeout(() => resolve(false), ENABLE_TIMEOUT_MS));
+        if (!(await Promise.race([enabled, held])) && !this.#dialogs.has(tabId)) this.#dialogs.set(tabId, { type: 'alert', message: UNSEEN_DIALOG });
+      }
     }
     this.#attached.set(tabId, (this.#attached.get(tabId) ?? 0) + 1);
+  }
+
+  /**
+   * A debugger command, unless a dialog opens on the tab meanwhile: the page
+   * stops handling input the moment it does, and the command that caused it
+   * would never answer. The dialog is the answer then.
+   */
+  async #untilDialog<T>(tabId: number, command: Promise<T>): Promise<T | undefined> {
+    let wake: () => void = () => undefined;
+    const opened = new Promise<undefined>((resolve) => { wake = () => resolve(undefined); });
+    const waiters = this.#dialogWaiters.get(tabId) ?? new Set<() => void>();
+    waiters.add(wake);
+    this.#dialogWaiters.set(tabId, waiters);
+    // Once the race is over, a late failure of the command is nobody's news.
+    void command.catch(() => undefined);
+    try {
+      // Opened before the wait began (input on a tab with a dialog is refused earlier, so this one is the command's own doing).
+      if (this.#dialogs.has(tabId)) return undefined;
+      // Input a page never answers is input a dialog is holding, heard of or not: say so rather than wait forever.
+      const held = new Promise<typeof UNANSWERED>((resolve) => setTimeout(() => resolve(UNANSWERED), INPUT_TIMEOUT_MS));
+      const outcome = await Promise.race([command, opened, held]);
+      if (outcome !== UNANSWERED) return outcome;
+      if (!this.#dialogs.has(tabId)) this.#dialogs.set(tabId, { type: 'alert', message: UNSEEN_DIALOG });
+      return undefined;
+    } finally {
+      waiters.delete(wake);
+      if (waiters.size === 0) this.#dialogWaiters.delete(tabId);
+    }
   }
 
   /** Let go, and detach once nothing else is holding it, so the yellow bar never outlives the work. */
@@ -1072,12 +1215,14 @@ export class BrowserCommands implements Executor {
     try {
       return await body(async (method, params) => {
         try {
-          const answer = await this.#chrome.debugger.sendCommand({ tabId }, method, params);
+          const command = this.#chrome.debugger.sendCommand({ tabId }, method, params);
+          // Input is what opens dialogs, and what a dialog then holds up; a capture or a key-up on an open dialog is refused before it gets here.
+          const answer = method.startsWith('Input.') ? await this.#untilDialog(tabId, command) : await command;
           sent += 1;
           return answer;
         } catch (error) {
           // The frame can appear partway (a password manager reacts to the first key): the caller decides whether it may go on another way.
-          if (error instanceof Error && OTHER_EXTENSION.test(error.message)) throw new DebuggerKeptOut(DEBUGGER_KEPT_OUT, sent);
+          if (error instanceof Error && (OTHER_EXTENSION.test(error.message) || DETACHED_UNDER_COMMAND.test(error.message))) throw new DebuggerKeptOut(DEBUGGER_KEPT_OUT, sent);
           throw error;
         }
       });

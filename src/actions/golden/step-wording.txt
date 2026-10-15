@@ -62,6 +62,18 @@ done  {"action":"scroll","direction":"down"}
        → Scrolled down
 not   {"action":"scroll","direction":"down"}
        → Scroll down
+done  {"action":"dialog","response":"accept"}
+       → Accepted the page's dialog
+not   {"action":"dialog","response":"accept"}
+       → Accept the page's dialog
+done  {"action":"dialog","response":"accept","value":"£10.69"}
+       → Answered the page's dialog with "£10.69"
+not   {"action":"dialog","response":"accept","value":"£10.69"}
+       → Answer the page's dialog with "£10.69"
+done  {"action":"dialog","response":"dismiss"}
+       → Dismissed the page's dialog
+not   {"action":"dialog","response":"dismiss"}
+       → Dismiss the page's dialog
 done  {"action":"tab","tabId":"tab-2"}
        → Switched tab
 not   {"action":"tab","tabId":"tab-2"}

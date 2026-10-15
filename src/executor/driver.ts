@@ -28,6 +28,9 @@ export type Pace = 'fast' | 'natural';
 /** What the page side says about an element it was asked to act on. */
 export interface Located { point?: Point; setByValue?: boolean; keyByKey?: boolean; multiline?: boolean; password?: boolean }
 
+/** An alert, confirm or prompt a page has open: its words are the page's. */
+export interface OpenDialog { type: 'alert' | 'confirm' | 'prompt' | 'beforeunload'; message: string; defaultValue?: string }
+
 /** The debugger was refused on this tab because of another extension's frame; `sent` says how much of the action had gone through it before. */
 export class DebuggerKeptOut extends Error {
   constructor(message: string, readonly sent: number) { super(message); }
@@ -65,6 +68,10 @@ export interface Driver {
 
   /** For scroll, which names no element: the tab of the latest observation, checked to still show that page. */
   observedTab(sessionId: string): Promise<number>;
+  /** The dialog a tab has open, if the executor saw it open. */
+  dialog(tabId: number): OpenDialog | undefined;
+  /** Answer the tab's open dialog: OK (with the prompt's text) or Cancel; a precondition failure when none is open. */
+  answerDialog(tabId: number, accept: boolean, text: string | undefined): Promise<void>;
   /** Make sure the content script is in the tab. */
   ready(tabId: number): Promise<void>;
   /** Run a page-side function in a whole tab. */

@@ -120,8 +120,8 @@ test('fills a field through the debugger, and calls a fill whose attach fails af
     const failed = await run('s-fill', { action: 'fill', observation: latest.id, target: { ref: again.ref }, value: 'red mug' });
     expect(failed['completed']).toBe('unknown');
     expect(failed['notice']).toMatch(/do not repeat a submission/);
-    // The clear really happened before the attach failed.
-    await expect(page.locator('input[name=q]')).toHaveValue('');
+    // The field was selected, not emptied, before the attach failed: nothing of the owner's was lost.
+    await expect(page.locator('input[name=q]')).toHaveValue('blue mug');
   } finally {
     await worker.evaluate(() => { const api = (globalThis as any).chrome.debugger; api.attach = api.__attach; });
   }
@@ -134,6 +134,38 @@ test('refuses to fill a password field: a refusal, nothing typed', async () => {
   // A plain refusal, nothing typed: not an "outcome unknown" that would pause the run.
   expect(result, JSON.stringify(result).slice(0, 300)).toMatchObject({ refused: expect.stringMatching(/Passwords are entered by the owner/) });
   expect(result['completed']).toBeUndefined();
+});
+
+test('a prompt the page opens ends the click, shows in the observation, keeps other input off, and is answered with text; a confirm is dismissed', async () => {
+  const observation = (await run('s-dialog', { action: 'navigate', url: `${fixture.main}/dialogs` }))['observation'];
+  // A submit input is a button to the model.
+  expect(observation.targets.find((target: { name: string }) => target.name === 'Continue')?.role).toBe('button');
+  const ask = observation.targets.find((target: { name: string }) => target.name === 'Ask for a price');
+  // Playwright dismisses a dialog at once unless a listener holds it; the agent is the one to answer these.
+  const page = context.pages().find((p) => p.url() === `${fixture.main}/dialogs`)!;
+  page.on('dialog', () => undefined);
+  const clicked = await run('s-dialog', { action: 'click', observation: observation.id, target: { ref: ask.ref } });
+  expect(clicked['completed']).toBe(true);
+  const withDialog = clicked['observation'];
+  expect(withDialog.dialog).toEqual({ type: 'prompt', message: 'Your price?', defaultValue: '0' });
+  expect(withDialog.targets).toEqual([]);
+  expect(withDialog.tree).toMatch(/prompt dialog open.*"Your price\?"/);
+
+  const refused = await run('s-dialog', { action: 'click', observation: withDialog.id, target: { by: 'role', role: 'button', name: 'Ask to confirm' } });
+  expect(refused['refused']).toMatch(/dialog/);
+  expect(refused['observation'].dialog).toBeDefined(); // the recovery observation says it again
+
+  const answered = await run('s-dialog', { action: 'dialog', observation: refused['observation'].id, response: 'accept', value: '£10.69' });
+  expect(answered['completed'], JSON.stringify(answered).slice(0, 600)).toBe(true);
+  expect(answered['observation'].dialog).toBeUndefined();
+  await expect(page.locator('#result')).toHaveText('You entered: £10.69');
+
+  const confirm = answered['observation'].targets.find((target: { name: string }) => target.name === 'Ask to confirm');
+  const asked = await run('s-dialog', { action: 'click', observation: answered['observation'].id, target: { ref: confirm.ref } });
+  expect(asked['observation'].dialog).toEqual({ type: 'confirm', message: 'Sure?' });
+  const declined = await run('s-dialog', { action: 'dialog', observation: asked['observation'].id, response: 'dismiss' });
+  expect(declined['completed']).toBe(true);
+  await expect(page.locator('#result')).toHaveText('Declined');
 });
 
 test('works in the page the owner has open once it is handed over', async () => {

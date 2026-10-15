@@ -17,7 +17,7 @@
 import type { FieldName } from './fields.js';
 
 /** Every action of the browser tool, in the order the model sees them. */
-export const ACTION_NAMES = ['navigate', 'observe', 'read', 'screenshot', 'click', 'hover', 'drag', 'fill', 'select', 'press', 'scroll', 'tab', 'close'] as const;
+export const ACTION_NAMES = ['navigate', 'observe', 'read', 'screenshot', 'click', 'hover', 'drag', 'fill', 'select', 'press', 'scroll', 'dialog', 'tab', 'close'] as const;
 export type ActionName = (typeof ACTION_NAMES)[number];
 
 /** A call as the validator sees it before it is accepted: plain fields. */

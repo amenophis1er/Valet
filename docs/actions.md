@@ -5,7 +5,7 @@
 The agent works through one tool, `browser`. Each call names an `action` and the fields it needs.
 Every call is validated, then checked by the run controller (fresh evidence, the run's scope, form submissions) before anything is dispatched; see [architecture.md](architecture.md).
 
-**Acting actions** — `click`, `hover`, `drag`, `fill`, `select`, `press`, `scroll` — act on the page: they must carry the latest `observation` id, invalidate it, and are followed by a new observation.
+**Acting actions** — `click`, `hover`, `drag`, `fill`, `select`, `press`, `scroll`, `dialog` — act on the page: they must carry the latest `observation` id, invalidate it, and are followed by a new observation.
 
 ## Summary
 
@@ -22,6 +22,7 @@ Every call is validated, then checked by the run controller (fresh evidence, the
 | `select` | yes | `target`, `value` | — | — |
 | `press` | yes | `key`, `target` | — | may submit a form (owner approves) |
 | `scroll` | yes | `direction` | — | — |
+| `dialog` | yes | `response` | `value` | — |
 | `tab` | no | `tabId` | — | — |
 | `close` | no | — | — | — |
 
@@ -71,6 +72,10 @@ press sends a listed key to a target.
 
 scroll moves the page up or down.
 
+### `dialog`
+
+dialog answers an alert, confirm or prompt the page has opened (the observation says so; nothing else works on that page until it is answered): response "accept" (OK) or "dismiss" (Cancel), with value as the text for a prompt.
+
 ### `tab`
 
 tab switches to a tabId from observation.tabs. A link that opens a new tab opens one of yours: observe then reads it.
@@ -91,9 +96,10 @@ close closes this conversation's tabs.
 | `button` | `left` \| `right` | click only: "right" opens the context menu (then click an item in it). Default left. Refused on any other action. |
 | `to` | `object` | Required for drag: where the drag ends — a target (a ref) or a point on the latest screenshot. Refused on any other action. |
 | `screenshot` | `string` | Required with point: copy screenshot.id from the latest screenshot result. A screenshot taken before any action is stale. |
-| `value` | `string` | Required for fill (the text) and select (an option label, text or value). |
+| `value` | `string` | Required for fill (the text) and select (an option label, text or value); dialog takes it as the text to answer a prompt with. |
+| `response` | `accept` \| `dismiss` | Required for dialog: "accept" presses OK on the page's open alert, confirm or prompt, "dismiss" presses Cancel. Refused on any other action. |
 | `key` | `Enter` \| `Tab` \| `Escape` \| `ArrowDown` \| `ArrowUp` \| `ArrowLeft` \| `ArrowRight` \| `Space` \| `Backspace` | Required for press, with a target. |
 | `direction` | `up` \| `down` | Required for scroll. |
 | `part` | `integer` | read only: which part of a long page's text, from 1. Default 1; a result says how many parts there are. Refused on any other action. |
 | `tabId` | `string` | Required for tab: an id from observation.tabs. |
-| `observation` | `string` | REQUIRED for click, hover, drag, fill, select, press and scroll. Copy observation.id from the most recent result, including recovery results. Never reuse after a dispatched action. |
+| `observation` | `string` | REQUIRED for click, hover, drag, fill, select, press, scroll and dialog. Copy observation.id from the most recent result, including recovery results. Never reuse after a dispatched action. |

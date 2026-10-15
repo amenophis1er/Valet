@@ -23,7 +23,7 @@ describe('the action registry', () => {
   });
 
   it('marks as acting exactly the actions that change the page through an element or the viewport', () => {
-    expect(ACTING).toEqual(['click', 'hover', 'drag', 'fill', 'select', 'press', 'scroll']);
+    expect(ACTING).toEqual(['click', 'hover', 'drag', 'fill', 'select', 'press', 'scroll', 'dialog']);
   });
 
   it('declares the facts the controller enforces: where a call goes, links followed, and submissions', () => {

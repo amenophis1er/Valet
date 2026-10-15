@@ -6,6 +6,7 @@
 
 import type { InputAction } from '../driver.js';
 import { click } from './click.js';
+import { dialog } from './dialog.js';
 import { drag } from './drag.js';
 import { fill } from './fill.js';
 import { hover } from './hover.js';
@@ -13,5 +14,5 @@ import { press } from './press.js';
 import { scroll } from './scroll.js';
 import { select } from './select.js';
 
-export const INPUT = { click, hover, drag, fill, select, press, scroll } satisfies Record<string, InputAction>;
+export const INPUT = { click, hover, drag, fill, select, press, scroll, dialog } satisfies Record<string, InputAction>;
 export type InputName = keyof typeof INPUT;
