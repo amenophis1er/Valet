@@ -262,7 +262,8 @@ function thumbnail(id: string, width: number, height: number, expired?: boolean)
   const cached = media.get(id);
   if (cached) image.src = cached.url;
   else void loadMedia(id).then((loaded) => { if (loaded) image.src = loaded.url; });
-  button.onclick = () => { void openLightbox(id, { width, height }); };
+  // Inside a <summary>, a click would also fold or unfold the steps: only open the image.
+  button.onclick = (event) => { event.preventDefault(); event.stopPropagation(); void openLightbox(id, { width, height }); };
   return button;
 }
 
@@ -371,7 +372,27 @@ function render(): void {
       item.append(fileChip(entry));
     } else if (entry.kind === 'owner') {
       item.className = 'owner';
-      item.textContent = entry.text;
+      const text = document.createElement('div');
+      text.className = 'owner-text';
+      text.textContent = entry.text;
+      item.append(text);
+      // A long message folds to its first lines, so the conversation stays in view; Show more opens it, and it stays open.
+      if (entry.text.length > LONG_MESSAGE_CHARS || entry.text.split('\n').length > LONG_MESSAGE_LINES) {
+        const key = index;
+        item.classList.add('long');
+        item.classList.toggle('open', openMessages.has(key));
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'show-more';
+        const label = () => { toggle.textContent = openMessages.has(key) ? 'Show less' : 'Show more'; };
+        label();
+        toggle.onclick = () => {
+          if (openMessages.has(key)) openMessages.delete(key); else openMessages.add(key);
+          item.classList.toggle('open', openMessages.has(key));
+          label();
+        };
+        item.append(toggle);
+      }
       if (entry.attachments?.length) {
         const box = document.createElement('div');
         box.className = 'owner-attachments';
@@ -395,7 +416,15 @@ function render(): void {
       }
     } else if (entry.kind === 'agent') {
       item.className = 'agent';
-      item.append(renderMarkdown(document, entry.text, { image: imageButton }), copyButton(entry.text));
+      const body = renderMarkdown(document, entry.text, { image: imageButton });
+      // A code block or a quote is often the thing wanted (a JSON result, a passage): each gets a copy of its own text.
+      for (const block of body.querySelectorAll('pre, blockquote')) {
+        const holder = document.createElement('div');
+        holder.className = 'block';
+        block.replaceWith(holder);
+        holder.append(block, copyButton(block.textContent ?? '', block.tagName === 'PRE' ? 'this code' : 'this quote', block.tagName === 'PRE' ? 'Copy this block' : 'Copy this quote'));
+      }
+      item.append(body, copyButton(entry.text));
     } else {
       item.className = entry.kind;
       item.textContent = entry.text;
@@ -466,6 +495,11 @@ function foldable(entry: Entry): boolean {
 
 /** Folds the owner opened, by the index of their first entry, so a re-render keeps them open. */
 const openFolds = new Set<number>();
+/** The owner's long messages unfolded with Show more, by position in the transcript; kept across renders. */
+const openMessages = new Set<number>();
+/** Past either, an owner's message folds to its first lines. */
+const LONG_MESSAGE_CHARS = 480;
+const LONG_MESSAGE_LINES = 8;
 
 /** Three dots that pulse while the agent is still at it. */
 function dots(): HTMLElement {
@@ -484,6 +518,8 @@ function stepRow(entry: StepEntry, withImage: boolean): HTMLLIElement {
   const summary = document.createElement('summary');
   summary.className = `action ${entry.outcome}`;
   summary.textContent = stepText(entry);
+  // The screenshot a step took sits small at the end of its row; click opens it large.
+  if (withImage && entry.image) summary.append(thumbnail(entry.image.id, entry.image.width, entry.image.height, entry.image.expired));
   details.append(summary);
   if (entry.detail) {
     const detail = document.createElement('div');
@@ -492,9 +528,11 @@ function stepRow(entry: StepEntry, withImage: boolean): HTMLLIElement {
     details.append(detail);
   }
   item.append(details);
-  if (withImage && entry.image) item.append(thumbnail(entry.image.id, entry.image.width, entry.image.height, entry.image.expired));
   return item;
 }
+
+/** How many of a folded stretch's screenshots show on its line; the rest show on their steps, once unfolded. */
+const SHOTS_ON_THE_LINE = 4;
 
 /**
  * A stretch of steps. One step shows as its row. More fold into one line —
@@ -503,12 +541,6 @@ function stepRow(entry: StepEntry, withImage: boolean): HTMLLIElement {
  */
 function activity(group: Entry[], key: number, live = false): HTMLLIElement[] {
   const steps = group.filter((entry): entry is StepEntry => entry.kind === 'action');
-  const images = steps.filter((step) => step.image).map((step) => {
-    const holder = document.createElement('li');
-    holder.className = 'step';
-    holder.append(thumbnail(step.image!.id, step.image!.width, step.image!.height, step.image!.expired));
-    return holder;
-  });
   if (group.length === 1 && steps.length === 1) {
     const row = stepRow(steps[0]!, true);
     if (live) row.querySelector('summary')!.append(dots());
@@ -537,15 +569,31 @@ function activity(group: Entry[], key: number, live = false): HTMLLIElement[] {
     issue.textContent = `${problems.length} not done`;
     summary.append(issue);
   }
+  // The screenshots taken along the way, small on the line itself; past four, the rest show on their steps.
+  const withShots = steps.filter((step) => step.image && !step.image.expired);
+  const onTheLine = new Set(withShots.slice(0, SHOTS_ON_THE_LINE));
+  if (withShots.length > 0) {
+    const shots = document.createElement('span');
+    shots.className = 'shots';
+    for (const step of onTheLine) shots.append(thumbnail(step.image!.id, step.image!.width, step.image!.height));
+    if (withShots.length > onTheLine.size) {
+      const more = document.createElement('span');
+      more.className = 'more-shots';
+      more.textContent = `+${withShots.length - onTheLine.size}`;
+      more.title = 'More screenshots, on their steps';
+      shots.append(more);
+    }
+    summary.append(shots);
+  }
   const list = document.createElement('ol');
   list.className = 'activity-steps';
   for (const entry of group) {
-    if (entry.kind === 'action') list.append(stepRow(entry, false));
+    if (entry.kind === 'action') list.append(stepRow(entry, !onTheLine.has(entry)));
     else { const note = document.createElement('li'); note.className = 'notice'; note.textContent = entry.kind === 'notice' ? entry.text : ''; list.append(note); }
   }
   details.append(summary, list);
   item.append(details);
-  return [item, ...images];
+  return [item];
 }
 
 /** The approval card: the owner's Allow once / Always / Deny. */
@@ -1114,15 +1162,15 @@ const COPY_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="
 const CHECK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>';
 
 /** A small copy icon on an answer (no text of its own, so the answer reads the same with it), a check for a moment once copied. */
-function copyButton(text: string): HTMLButtonElement {
-  const button = iconButton(COPY_ICON, 'Copy this answer', async () => {
+function copyButton(text: string, what = 'this answer', title = 'Copy this answer as Markdown'): HTMLButtonElement {
+  const button = iconButton(COPY_ICON, `Copy ${what}`, async () => {
     const ok = await copyText(text);
     button.innerHTML = ok ? CHECK_ICON : COPY_ICON;
     button.setAttribute('aria-label', ok ? 'Copied' : 'Could not copy');
     button.classList.toggle('done', ok);
-    setTimeout(() => { button.innerHTML = COPY_ICON; button.setAttribute('aria-label', 'Copy this answer'); button.classList.remove('done'); }, 1500);
+    setTimeout(() => { button.innerHTML = COPY_ICON; button.setAttribute('aria-label', `Copy ${what}`); button.classList.remove('done'); }, 1500);
   }, 'copy');
-  button.title = 'Copy this answer as Markdown';
+  button.title = title;
   return button;
 }
 
