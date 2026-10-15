@@ -131,7 +131,7 @@ test('adds a connection in Settings and picks its model', async () => {
   await panel.close();
 });
 
-test('offers Claude and ChatGPT subscription sign-in, with their network rules limited to the extension', async () => {
+test('offers Claude, ChatGPT and OpenCode sign-in, with the network rules of the first two limited to the extension', async () => {
   const panel = await openPanel();
   await panel.getByRole('button', { name: 'Settings' }).click();
   await panel.getByRole('button', { name: 'Add a connection' }).click();
@@ -142,6 +142,10 @@ test('offers Claude and ChatGPT subscription sign-in, with their network rules l
   await panel.getByLabel('Provider').selectOption('chatgpt-sub');
   await expect(panel.getByRole('button', { name: 'Sign in with ChatGPT' })).toBeVisible();
   await expect(panel.locator('#chatgpt-hint')).toBeVisible();
+  await panel.getByLabel('Provider').selectOption('opencode-sub');
+  await expect(panel.getByRole('button', { name: 'Sign in with OpenCode' })).toBeVisible();
+  await expect(panel.locator('#opencode-hint')).toBeVisible();
+  await expect(panel.locator('#key-row')).toBeHidden();
   await panel.getByRole('button', { name: 'Back' }).click();
   await panel.close();
 

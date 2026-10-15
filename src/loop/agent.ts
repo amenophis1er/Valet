@@ -56,6 +56,9 @@ const RAISED_MAX_TOKENS = 16_000;
 const CUT_OFF = 'Your last reply was cut off at the length limit before it was complete, and nothing in it was run. '
   + 'Do it again, more briefly: if you were writing a file, write it in one save_file call with shorter content; keep any thinking short.';
 /** chrome.storage.session holds 10 MB: past this, the conversation must start over before the next model turn. */
+/** What the model is told when it ends a run without a word: the owner sees nothing. */
+const SAID_NOTHING = 'Your reply had no words, so the owner saw no answer. Answer them now in plain words; '
+  + 'any suggest_next call goes in the same reply, after the words.';
 const MAX_STATE_CHARS = 4_000_000;
 const TOO_LONG = 'This conversation is too long to keep going. Start a new conversation (the + button) to continue.';
 const TOO_BIG = 'These attachments would make the conversation too large to keep. Start a new conversation (the + button), or send smaller files.';
@@ -481,6 +484,8 @@ export class AgentLoop {
     /** The output cap; raised once in a run after a reply was cut off at it. */
     let maxTokens = MAX_TOKENS;
     let cutOff = 0;
+    /** Asked once per run to say its answer after ending with no words. */
+    let nudged = false;
     try {
       for (;;) {
         // Guards before every model turn, not only before calls.
@@ -556,6 +561,14 @@ export class AgentLoop {
           }
           if (result.stopReason === 'length') this.#note('The model\'s answer was cut off at its length limit.');
           if (result.stopReason === 'refusal') this.#note('The model declined to continue.');
+          // Ended without a word since its last step (a reply that was only suggest_next, or nothing at all): asked once
+          // to answer, so the owner is not left with buttons and no answer.
+          if (!result.text && result.stopReason !== 'refusal' && !nudged && !this.#answered()) {
+            nudged = true;
+            s.history.push({ role: 'user', content: SAID_NOTHING });
+            await this.#save();
+            continue;
+          }
           // A message the owner sent while this answer was being written: the model hears it before the run ends.
           if (this.#amendments.length > 0) { await this.#save(); continue; }
           return this.#end();
@@ -818,6 +831,16 @@ export class AgentLoop {
   }
 
   /** `atLimit`: the run stopped at its limit of actions or time, and the panel offers Continue. */
+  /** Whether the agent has said anything since its last step (or the owner's message): what the owner reads as its answer. */
+  #answered(): boolean {
+    for (let i = this.#state.transcript.length - 1; i >= 0; i -= 1) {
+      const kind = this.#state.transcript[i]!.kind;
+      if (kind === 'agent') return true;
+      if (kind === 'action' || kind === 'owner') return false;
+    }
+    return false;
+  }
+
   async #end(notice?: string, atLimit = false): Promise<void> {
     this.#settleLeftovers();
     if (notice) this.#note(notice);

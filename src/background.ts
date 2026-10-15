@@ -114,7 +114,7 @@ function registerAgentPanels(snapshot: unknown): void {
 
 /* ---- the executor and what every conversation shares ---- */
 
-const handleAi = createAiMessageHandler({ prefix: AI_PREFIX, settingsHint: 'Open Settings in the side panel.' });
+const handleAi = createAiMessageHandler({ prefix: AI_PREFIX, settingsHint: 'Open Settings in the side panel.', opencodeClientId: 'valet' });
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   // Next, from the bubble in the page: only this extension's own scripts can send it, and it goes to the conversation working in that tab.
   if (message?.type === 'agent:step') {

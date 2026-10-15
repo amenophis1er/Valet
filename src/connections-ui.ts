@@ -1,13 +1,13 @@
 /*
  * The AI models sheet: the list of connections, the form to add one (API
- * key, or a sign-in with a Claude, ChatGPT or Ollama account), and the model
+ * key, or a sign-in with a Claude, ChatGPT, OpenCode or Ollama account), and the model
  * picked on each row. Settings in the side panel and the welcome page show
  * the same sheet, from this one module: `connectionsMarkup()` is its HTML,
  * `setupConnections()` wires it.
  */
 
 import type { AiClient } from '@amenophis1er/byok/client';
-import { OPENAI_COMPATIBLE_PRESETS, type ConnectionView } from '@amenophis1er/byok/types';
+import { OPENAI_COMPATIBLE_PRESETS, type ConnectionView, type Protocol } from '@amenophis1er/byok/types';
 import { iconButton, TRASH } from './ui.js';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -29,6 +29,7 @@ function connectionsMarkup(): string {
                 <option value="claude-sub">Claude Pro/Max</option>
                 <option value="chatgpt-sub">ChatGPT Plus/Pro</option>
                 <option value="ollama-cloud">Ollama Cloud</option>
+                <option value="opencode-sub">OpenCode Console</option>
               </optgroup>
               <optgroup id="key-providers" label="Use an API key">
                 <option value="anthropic">Anthropic</option>
@@ -42,6 +43,7 @@ function connectionsMarkup(): string {
           <p id="claude-hint" class="muted hint" hidden>Opens claude.com to approve access with your Claude subscription. After you approve, it shows a code: paste it here.</p>
           <p id="chatgpt-hint" class="muted hint" hidden>Opens openai.com to connect your ChatGPT subscription. Enter the code shown here on that page.</p>
           <p id="ollama-hint" class="muted hint" hidden>Opens ollama.com to pair this browser with your account, like <code>ollama signin</code>. Click Connect there, then come back.</p>
+          <p id="opencode-hint" class="muted hint" hidden>Opens opencode.ai to sign in with your OpenCode Console account, like <code>opencode auth login</code>. Check the code there and click Authorize. Its paid models; the free ones answer OpenCode's own app alone.</p>
           <label id="base-row" hidden>Server URL <input id="base" placeholder="http://localhost:1234"></label>
           <label id="key-row">API key <input id="key" type="password" autocomplete="off" placeholder="Stays encrypted in the extension"></label>
           <div id="claude-finish" class="row" hidden>
@@ -87,7 +89,8 @@ export function setupConnections(options: { ai: AiClient; onChange?: () => void;
   return { render: renderConnections, openAddForm };
 }
 
-type Provider = { kind: 'anthropic' | 'openai-compatible'; base?: string; key: boolean; label: string; preset?: true };
+/** `protocol` is the server's own, when the preset names one (Gemini): byok drops it from a save that leaves it out. */
+type Provider = { kind: 'anthropic' | 'openai-compatible'; base?: string; key: boolean; label: string; preset?: true; protocol?: Protocol };
 
 /**
  * The API-key providers after Anthropic are the library's OpenAI-compatible
@@ -97,7 +100,7 @@ type Provider = { kind: 'anthropic' | 'openai-compatible'; base?: string; key: b
  */
 const KEY_PRESETS: Record<string, Provider> = Object.fromEntries(OPENAI_COMPATIBLE_PRESETS
   .filter((preset) => !preset.label.startsWith('Ollama'))
-  .map((preset) => [preset.label.toLowerCase().replace(/[^a-z0-9]+/g, '-'), { kind: 'openai-compatible', base: preset.baseUrl, key: true, label: preset.label, preset: true }]));
+  .map((preset) => [preset.label.toLowerCase().replace(/[^a-z0-9]+/g, '-'), { kind: 'openai-compatible', base: preset.baseUrl, key: true, label: preset.label, preset: true, protocol: preset.protocol }]));
 
 const PROVIDERS: Record<string, Provider> = {
   anthropic: { kind: 'anthropic', key: true, label: 'Anthropic' },
@@ -152,7 +155,7 @@ function connectionRow(connection: ConnectionView, active: boolean): HTMLLIEleme
     });
     models.onclick = (event) => event.stopPropagation();
     models.onchange = async () => {
-      await ai.saveConnection({ id: connection.id, kind: connection.kind, label: connection.label, baseUrl: connection.baseUrl, model: models.value, apiKeyMode: 'keep' });
+      await ai.saveConnection({ id: connection.id, kind: connection.kind, protocol: connection.protocol, label: connection.label, baseUrl: connection.baseUrl, model: models.value, apiKeyMode: 'keep' });
       await renderConnections();
       onChange();
     };
@@ -185,7 +188,7 @@ function openAddForm(open: boolean): void {
   if (open) renderProvider();
 }
 
-const SIGN_IN: Record<string, string> = { 'claude-sub': 'Sign in with Claude', 'chatgpt-sub': 'Sign in with ChatGPT', 'ollama-cloud': 'Sign in with Ollama' };
+const SIGN_IN: Record<string, string> = { 'claude-sub': 'Sign in with Claude', 'chatgpt-sub': 'Sign in with ChatGPT', 'ollama-cloud': 'Sign in with Ollama', 'opencode-sub': 'Sign in with OpenCode' };
 
 function renderProvider(): void {
   const provider = $<HTMLSelectElement>('provider').value;
@@ -198,6 +201,7 @@ function renderProvider(): void {
   else if (base.value.includes('{')) base.value = '';
   $('base-row').hidden = provider !== 'custom' && !template;
   $('ollama-hint').hidden = provider !== 'ollama-cloud';
+  $('opencode-hint').hidden = provider !== 'opencode-sub';
   $('claude-hint').hidden = provider !== 'claude-sub';
   $('chatgpt-hint').hidden = provider !== 'chatgpt-sub';
   $('claude-finish').hidden = true;
@@ -250,10 +254,37 @@ async function signInChatgpt(): Promise<void> {
   setStatus('The code expired. Start the sign-in again.');
 }
 
+/** OpenCode Console: a device code, filled in on the opencode.ai page the library opens; shown here to compare, then wait. */
+async function signInOpencode(): Promise<void> {
+  const start = await ai.opencodeLoginStart();
+  if (!start.ok || !start.data) { setStatus(start.error ?? 'Could not start the sign-in.'); return; }
+  const code = $('chatgpt-box');
+  $('chatgpt-code').textContent = start.data.userCode;
+  code.hidden = false;
+  setStatus('Waiting for you to click Authorize on opencode.ai…', true);
+  let delay = start.data.pollMs;
+  const deadline = Date.now() + 10 * 60_000;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    const poll = await ai.opencodeLoginPoll('');
+    if (!poll.ok) { setStatus(poll.error ?? 'Sign-in failed.'); code.hidden = true; return; }
+    if (poll.data?.status === 'created') {
+      code.hidden = true;
+      setStatus(''); openAddForm(false); flash('Connected. Pick its model in the list.');
+      await renderConnections();
+      return;
+    }
+    if (poll.data?.status === 'pending') delay = poll.data.pollMs;
+  }
+  code.hidden = true;
+  setStatus('The code expired. Start the sign-in again.');
+}
+
 async function addConnection(): Promise<void> {
   const provider = $<HTMLSelectElement>('provider').value;
   if (provider === 'claude-sub') return signInClaude();
   if (provider === 'chatgpt-sub') return signInChatgpt();
+  if (provider === 'opencode-sub') return signInOpencode();
   if (provider === 'ollama-cloud') {
     setStatus('Waiting for you to click Connect on ollama.com…', true);
     const start = await ai.ollamaLoginStart('Valet (Chrome)');
@@ -275,7 +306,7 @@ async function addConnection(): Promise<void> {
   if (missing) { setStatus(`Replace ${missing} in the server URL with yours.`); return; }
   const key = $<HTMLInputElement>('key').value.trim();
   if (spec.key && provider !== 'custom' && !key) { setStatus('Enter the API key.'); return; }
-  const saved = await ai.saveConnection({ kind: spec.kind, label: spec.label, baseUrl: base, model: '', apiKeyMode: key ? 'set' : 'keep', apiKey: key, makeActive: true });
+  const saved = await ai.saveConnection({ kind: spec.kind, protocol: spec.protocol, label: spec.label, baseUrl: base, model: '', apiKeyMode: key ? 'set' : 'keep', apiKey: key, makeActive: true });
   $<HTMLInputElement>('key').value = '';
   if (saved.ok) { openAddForm(false); flash('Connected. Pick its model in the list.'); } else setStatus(saved.error ?? 'Could not save.');
   await renderConnections();
