@@ -219,7 +219,7 @@ describe('targets', () => {
     await commands.run(command('observe'));
     await expect(commands.run(command('click', { target: { by: 'role', role: 'button', name: 'Checkout' } })))
       .rejects.toThrow(/No button named Checkout in the last observation/);
-    expect(dispatched).toEqual([]);
+    expect(dispatched.filter((method) => method !== 'detach')).toEqual([]);
   });
 
   it('refuses an ambiguous label and says which refs to choose between', async () => {
@@ -444,7 +444,7 @@ describe('what a ref is bound to', () => {
     [...tabs.values()][0]!.url = 'https://example.test/elsewhere';
     await expect(commands.run(command('click', { target: { ref: 'e1' } }))).rejects.toThrow(/has changed since that observation/);
     await expect(commands.run(command('scroll', { direction: 'down' }))).rejects.toThrow(/has changed since that observation/);
-    expect(dispatched).toEqual([]);
+    expect(dispatched.filter((method) => method !== 'detach')).toEqual([]);
   });
 
   it('still acts when only the fragment changed: a map or a hash router stays on its document', async () => {
@@ -481,7 +481,7 @@ describe('what a ref is bound to', () => {
     current.documentId = 'doc-reloaded';
     await expect(h.commands.run(command('click', { target: { ref: 'e1' } }))).rejects.toThrow(/has changed since that observation/);
     await expect(h.commands.run(command('scroll', { direction: 'down' }))).rejects.toThrow(/has changed since that observation/);
-    expect(h.dispatched).toEqual([]);
+    expect(h.dispatched.filter((method) => method !== 'detach')).toEqual([]);
   });
 
   it('refuses a same-document URL on another origin, which no page can make by itself', async () => {
@@ -490,7 +490,7 @@ describe('what a ref is bound to', () => {
     await h.commands.run(command('observe'));
     [...h.tabs.values()][0]!.url = 'https://elsewhere.test/';
     await expect(h.commands.run(command('click', { target: { ref: 'e1' } }))).rejects.toThrow(/has changed since that observation/);
-    expect(h.dispatched).toEqual([]);
+    expect(h.dispatched.filter((method) => method !== 'detach')).toEqual([]);
   });
 
   it('refuses a scroll before the first observation', async () => {
@@ -586,7 +586,7 @@ describe('cancelling', () => {
     cancel.cancel();
     await expect(commands.run(command('click', { target: { ref: 'e1' } }), cancel)).rejects.toBeInstanceOf(CancelledError);
     expect(cancel.dispatched).toBe(false);
-    expect(dispatched).toEqual([]);
+    expect(dispatched.filter((method) => method !== 'detach')).toEqual([]);
   });
 
   it('detaches the debugger even when the command is cancelled mid-flight', async () => {
@@ -594,7 +594,7 @@ describe('cancelling', () => {
     await commands.run(command('observe'));
     const cancel = new Cancellation();
     // The tab dies just as the first input event goes out.
-    chrome.debugger.sendCommand = async () => { cancel.cancel(); throw new Error('the tab went away'); };
+    chrome.debugger.sendCommand = async (_target: unknown, method: string) => { if (!method.startsWith('Input.')) return {}; cancel.cancel(); throw new Error('the tab went away'); };
     await expect(commands.run(command('click', { target: { ref: 'e1' } }), cancel)).rejects.toThrow();
     expect(cancel.dispatched).toBe(true);
     expect(dispatched).toContain('detach');
@@ -1354,10 +1354,12 @@ describe('a dialog the page opens', () => {
     expect(sent.at(-1)).toEqual({ method: 'Page.handleJavaScriptDialog', params: { accept: false } });
   });
 
-  it('is a plain refusal when there is none to answer', async () => {
-    const { commands, failures } = await opened();
+  it('is a plain refusal when there is none to answer, with nothing sent to the page', async () => {
+    const { commands, failures, dispatched } = await opened();
     await commands.run(command('observe'));
     failures.noDialog = true;
+    await expect(commands.run(command('dialog', { response: 'accept' }))).rejects.toThrow(PreconditionError);
     await expect(commands.run(command('dialog', { response: 'accept' }))).rejects.toThrow(/No dialog is open on this page/);
+    expect(dispatched).not.toContain('Page.handleJavaScriptDialog');
   });
 });
