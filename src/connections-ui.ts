@@ -136,25 +136,33 @@ function connectionRow(connection: ConnectionView, active: boolean): HTMLLIEleme
   label.textContent = connection.label;
   title.append(label);
   if (active) { const pill = document.createElement('span'); pill.className = 'pill'; pill.textContent = 'In use'; title.append(pill); }
-  const detail = document.createElement('small');
-  detail.textContent = `${connection.baseUrl || connection.kind}${connection.keyHint ? ` · ${connection.keyHint}` : ''}`;
-
-  const models = document.createElement('select');
-  models.setAttribute('aria-label', `Model for ${connection.label}`);
-  models.append(new Option(connection.model || 'Loading models…', connection.model));
-  void ai.listModels({ kind: connection.kind, baseUrl: connection.baseUrl, apiKey: '', id: connection.id }).then((res) => {
-    models.textContent = '';
-    if (!res.ok || !res.data) { models.append(new Option(connection.model || `Models unavailable: ${res.error ?? ''}`, connection.model)); return; }
-    if (!connection.model) models.append(new Option('Pick a model', ''));
-    for (const model of res.data) models.append(new Option(model.name, model.id, false, model.id === connection.model));
-  });
-  models.onclick = (event) => event.stopPropagation();
-  models.onchange = async () => {
-    await ai.saveConnection({ id: connection.id, kind: connection.kind, label: connection.label, baseUrl: connection.baseUrl, model: models.value, apiKeyMode: 'keep' });
-    await renderConnections();
-    onChange();
-  };
-  name.append(title, models, detail);
+  // Only the row in use opens: its model picker and its endpoint. The others are one line each, the model they would
+  // run named in it, so a list of several connections stays a list; picking one opens it.
+  if (active) {
+    const detail = document.createElement('small');
+    detail.textContent = `${connection.baseUrl || connection.kind}${connection.keyHint ? ` · ${connection.keyHint}` : ''}`;
+    const models = document.createElement('select');
+    models.setAttribute('aria-label', `Model for ${connection.label}`);
+    models.append(new Option(connection.model || 'Loading models…', connection.model));
+    void ai.listModels({ kind: connection.kind, baseUrl: connection.baseUrl, apiKey: '', id: connection.id }).then((res) => {
+      models.textContent = '';
+      if (!res.ok || !res.data) { models.append(new Option(connection.model || `Models unavailable: ${res.error ?? ''}`, connection.model)); return; }
+      if (!connection.model) models.append(new Option('Pick a model', ''));
+      for (const model of res.data) models.append(new Option(model.name, model.id, false, model.id === connection.model));
+    });
+    models.onclick = (event) => event.stopPropagation();
+    models.onchange = async () => {
+      await ai.saveConnection({ id: connection.id, kind: connection.kind, label: connection.label, baseUrl: connection.baseUrl, model: models.value, apiKeyMode: 'keep' });
+      await renderConnections();
+      onChange();
+    };
+    name.append(title, models, detail);
+  } else {
+    const line = document.createElement('small');
+    line.className = 'model-line';
+    line.textContent = connection.model || 'No model picked yet';
+    name.append(title, line);
+  }
 
   const remove = iconButton(TRASH, `Remove ${connection.label}`, async () => { await ai.deleteConnection(connection.id); await renderConnections(); onChange(); }, 'danger');
   row.append(dot, name, remove);
