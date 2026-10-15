@@ -825,6 +825,14 @@ test('copies an answer and the whole conversation, and saves it as one HTML file
   await panel.getByRole('button', { name: 'More' }).click();
   // Under the header, not above it.
   await expect(panel.getByRole('menuitem', { name: /Copy conversation/ })).toBeInViewport({ ratio: 1 });
+  if (process.env['SCREENSHOTS']) { await panel.waitForTimeout(300); await panel.screenshot({ path: path.join(process.env['SCREENSHOTS'], 'more-menu.png') }); }
+  // Each item's title sits above its description, never on it.
+  const rows = await panel.locator('#more-menu [role=menuitem]').evaluateAll((items) => items.map((item) => {
+    const title = item.querySelector('.title')!.getBoundingClientRect();
+    const hint = item.querySelector('small')!.getBoundingClientRect();
+    return { title: [title.top, title.height], hint: [hint.top, hint.height], ok: hint.top >= title.bottom - 1 };
+  }));
+  expect(rows.every((row) => row.ok), JSON.stringify(rows)).toBe(true);
   await panel.getByRole('menuitem', { name: /Copy conversation/ }).click();
   const markdown = await panel.evaluate(() => navigator.clipboard.readText());
   expect(markdown).toContain('# Look around');
