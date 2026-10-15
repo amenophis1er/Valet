@@ -1,0 +1,71 @@
+# A version tag (v0.1.1) ships that version: the same checks as CI, then the
+# store package, uploaded to the Chrome Web Store as a draft of the listing,
+# and a GitHub release holding the zip. Publishing (submitting for review) is
+# a separate step, on by the repository variable CWS_PUBLISH=true; until then
+# the draft is reviewed and published from the developer dashboard.
+#
+# The tag must match package.json's version. Secrets: docs/releasing.md.
+# Run by hand (Actions → Release → Run workflow), it uploads the current
+# package as the draft without a tag or a GitHub release: a smoke test of the
+# credentials, and a way to refresh the draft between versions.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: The tag is the version
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $version" >&2
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+
+      - name: Package
+        run: node scripts/package.mjs release
+
+      - name: Upload to the Chrome Web Store
+        env:
+          EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        run: npx --yes chrome-webstore-upload-cli@3 upload --source "release/valet-$VERSION.zip"
+
+      - name: Submit for review
+        if: vars.CWS_PUBLISH == 'true'
+        env:
+          EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        run: npx --yes chrome-webstore-upload-cli@3 publish
+
+      - name: GitHub release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "release/valet-$VERSION.zip" --title "Valet $VERSION" --generate-notes

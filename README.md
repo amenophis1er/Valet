@@ -63,7 +63,9 @@ companion app.
   items, which account), it asks with a few options you pick with one click,
   the one it suggests first. Type your own answer instead, or Skip to let it
   decide. A question never allows anything: sites and forms keep their own
-  cards.
+  cards. And when an answer leaves an obvious next step, it offers up to three
+  as buttons under it ("Add both to the cart"); a button just sends those
+  words as your next message.
 - **Learn** — a toggle in the message box: one step at a time. Before each
   action the agent points at where it will go, says in a bubble what it will
   do and why, and waits for you to press Next — in the bubble or in the panel.
@@ -172,7 +174,8 @@ npm run screenshots  # every screen and state, light and dark, into screenshots/
 
 How it is put together — the layers, the path every action takes, what the
 extension guarantees — is in [docs/architecture.md](docs/architecture.md);
-every action and field is in [docs/actions.md](docs/actions.md).
+every action and field is in [docs/actions.md](docs/actions.md). A version
+tag ships a release to the Chrome Web Store: [docs/releasing.md](docs/releasing.md).
 
 `npm run dev` builds with inline source maps and watches `src/` and `static/`.
 A change to the panel's files reloads the open panel in place; a change to the
