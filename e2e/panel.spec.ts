@@ -193,7 +193,7 @@ test('runs a goal from the panel: the agent searches the shop and answers', asyn
   expect(model.origins.length).toBeGreaterThan(0);
   expect(model.origins.filter(Boolean)).toEqual([]);
   const first = model.requests[0]!;
-  expect(first.tools).toHaveLength(4);
+  expect(first.tools).toHaveLength(5);
   expect((first as Record<string, unknown>)['parallel_tool_calls']).toBe(false);
   // Every tool call was answered before the next model turn.
   const last = model.requests.at(-1)!.messages;
@@ -447,10 +447,11 @@ test('sends attached files and a screenshot of another tab with the owner\'s mes
   await panel.getByRole('button', { name: 'Send' }).click();
   await expect(panel.locator('.agent').last()).toHaveText('Got all three.', { timeout: 30_000 });
   await expect(panel.locator('.pending')).toHaveCount(0);
-  // The owner's message shows the image from storage and the other files by name.
-  const bubble = panel.locator('.owner').last();
-  await expect.poll(() => bubble.locator('img').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
-  await expect(bubble.locator('.chip-file')).toHaveText([/PDFreport\.pdf/, /TXTnotes\.txt/]);
+  // The attachments sit in a row of their own above the owner's bubble: the image from storage, the other files by name.
+  const attached = panel.locator('.owner-attachments').last();
+  await expect.poll(() => attached.locator('img').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+  await expect(attached.locator('.chip-file')).toHaveText([/PDFreport\.pdf/, /TXTnotes\.txt/]);
+  await expect(panel.locator('.owner').last().locator('img, .chip-file')).toHaveCount(0);
 
   // A screenshot of another tab — in the background — through Chrome's own share dialog.
   await panel.getByRole('button', { name: 'Add to the message' }).click();
@@ -1185,6 +1186,63 @@ test('a long message folds with Show more, screenshots sit small on the steps\' 
   expect((await panel.evaluate(() => navigator.clipboard.readText())).trim()).toBe('{"mug": "blue", "price": "$12.40"}');
   await expect(panel.getByRole('button', { name: 'Copy this quote' })).toHaveCount(1);
   await expect(panel.getByRole('button', { name: 'Copy this answer' })).toHaveCount(1);
+  await shop.close();
+  await panel.close();
+});
+
+test('what the agent says between its steps folds in with them as notes; its answer stays out', async () => {
+  model.script([
+    () => ({ text: 'Looking at the shop first.', call: { action: 'observe' } }),
+    () => ({ text: 'Now the mug.', call: { action: 'observe' } }),
+    () => ({ text: 'The blue mug costs $12.40.' }),
+  ]);
+  const shop = await context.newPage();
+  await shop.goto(`${fixture.main}/shop`);
+  const panel = await openPanel();
+  await panel.getByRole('button', { name: 'New conversation' }).click();
+  await shop.bringToFront();
+  await expect(panel.locator('#tab-title')).toHaveText('Fixture shop');
+  await panel.locator('#goal').fill('Price of the blue mug');
+  await panel.getByRole('button', { name: 'Send' }).click();
+  await expect(panel.locator('.agent').last()).toHaveText('The blue mug costs $12.40.', { timeout: 30_000 });
+  // One answer out; the two working notes inside the fold, counted on its line, the newest named.
+  await expect(panel.locator('.agent')).toHaveCount(1);
+  const fold = panel.locator('.activity > details');
+  await expect(fold.locator('summary .count-steps')).toHaveText('2 steps · 2 notes');
+  await expect(fold.locator('summary .latest')).toHaveText('Now the mug.');
+  await expect(fold.locator('.activity-steps .note')).toHaveText(['Looking at the shop first.', 'Now the mug.']);
+  if (process.env['SCREENSHOTS']) {
+    await panel.setViewportSize({ width: 380, height: 520 });
+    await panel.screenshot({ path: path.join(process.env['SCREENSHOTS'], 'notes-folded.png') });
+    await fold.locator('> summary').click();
+    await panel.screenshot({ path: path.join(process.env['SCREENSHOTS'], 'notes-open.png') });
+  }
+  await shop.close();
+  await panel.close();
+});
+
+test('next steps the agent offers show as chips under its answer; a chip sends its words as the next message', async () => {
+  model.script([
+    () => ({ text: 'Two mugs match.', tool: 'suggest_next', call: { next: ['Add both to the cart', 'Compare the sellers'] } }),
+    // After the tool's answer the turn has nothing to add: the run ends on the answer above.
+    () => ({ text: '' }),
+    () => ({ text: 'Added both.' }),
+  ]);
+  const shop = await context.newPage();
+  await shop.goto(`${fixture.main}/shop`);
+  const panel = await openPanel();
+  await panel.getByRole('button', { name: 'New conversation' }).click();
+  await shop.bringToFront();
+  await expect(panel.locator('#tab-title')).toHaveText('Fixture shop');
+  await panel.locator('#goal').fill('Find the blue mugs');
+  await panel.getByRole('button', { name: 'Send' }).click();
+  await expect(panel.locator('.agent').last()).toHaveText('Two mugs match.', { timeout: 30_000 });
+  const chips = panel.locator('.follow-ups .follow-up');
+  await expect(chips).toHaveText(['Add both to the cart', 'Compare the sellers']);
+  await chips.first().click();
+  await expect(panel.locator('.owner').last()).toHaveText('Add both to the cart');
+  await expect(panel.locator('.agent').last()).toHaveText('Added both.', { timeout: 30_000 });
+  await expect(panel.locator('.follow-ups')).toHaveCount(0);
   await shop.close();
   await panel.close();
 });

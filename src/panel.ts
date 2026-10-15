@@ -346,28 +346,22 @@ function render(): void {
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index]!;
     const item = document.createElement('li');
-    // Approval notes just before a step belong to it.
-    let first = index;
-    while (first < entries.length && foldable(entries[first]!)) first += 1;
-    if (first > index && first < entries.length && entries[first]!.kind === 'action') {
-      let end = first;
-      while (end + 1 < entries.length && (entries[end + 1]!.kind === 'action' || foldable(entries[end + 1]!))) end += 1;
-      while (entries[end]!.kind !== 'action') end -= 1;
-      const live = state.status === 'running' && end === entries.length - 1;
-      list.append(...activity(entries.slice(index, end + 1), index, live));
-      index = end;
-      continue;
+    // A stretch of work folds into one line: the steps, what the agent said between them (its working notes), and the
+    // approval and retry notes around them. What it says after its last step stays out: its answer, or, while it
+    // works, what it is about to do next, which folds in once the next step comes.
+    if (inStretch(entry)) {
+      let stop = index;
+      while (stop + 1 < entries.length && inStretch(entries[stop + 1]!)) stop += 1;
+      let end = stop;
+      while (end >= index && entries[end]!.kind === 'agent') end -= 1;
+      if (end >= index && entries.slice(index, end + 1).some((candidate) => candidate.kind === 'action')) {
+        const live = state.status === 'running' && end === entries.length - 1;
+        list.append(...activity(entries.slice(index, end + 1), index, live));
+        index = end;
+        continue;
+      }
     }
-    if (entry.kind === 'action') {
-      // The steps between two things said, as one foldable line.
-      let end = index;
-      while (end + 1 < entries.length && (entries[end + 1]!.kind === 'action' || foldable(entries[end + 1]!))) end += 1;
-      while (entries[end]!.kind !== 'action') end -= 1;
-      const live = state.status === 'running' && end === entries.length - 1;
-      list.append(...activity(entries.slice(index, end + 1), index, live));
-      index = end;
-      continue;
-    } else if (entry.kind === 'file') {
+    if (entry.kind === 'file') {
       item.className = 'file-row';
       item.append(fileChip(entry));
     } else if (entry.kind === 'owner') {
@@ -394,7 +388,8 @@ function render(): void {
         item.append(toggle);
       }
       if (entry.attachments?.length) {
-        const box = document.createElement('div');
+        // A row of their own above the bubble: the attachments are not part of the sentence.
+        const box = document.createElement('li');
         box.className = 'owner-attachments';
         for (const attachment of entry.attachments) {
           if (attachment.id) {
@@ -412,7 +407,9 @@ function render(): void {
             box.append(chip);
           }
         }
-        item.append(box);
+        list.append(box);
+        // Only attachments, no words: the row is the message, and an empty bubble under it would say nothing.
+        if (!entry.text.trim()) continue;
       }
     } else if (entry.kind === 'agent') {
       item.className = 'agent';
@@ -425,6 +422,11 @@ function render(): void {
         holder.append(block, copyButton(block.textContent ?? '', block.tagName === 'PRE' ? 'this code' : 'this quote', block.tagName === 'PRE' ? 'Copy this block' : 'Copy this quote'));
       }
       item.append(body, copyButton(entry.text));
+    } else if (entry.kind === 'notice' && /^Auto is (on|off)/.test(entry.text)) {
+      // The approval mode, as a chip; the whole explanation is in its tooltip.
+      item.className = 'notice chip';
+      item.textContent = entry.text.startsWith('Auto is on') ? 'Auto is on · sites approved without asking' : 'Auto is off · asks before each new site';
+      item.title = entry.text;
     } else {
       item.className = entry.kind;
       item.textContent = entry.text;
@@ -433,6 +435,7 @@ function render(): void {
   }
   if (skillable()) list.append(saveSkillRow());
   if (state.atLimit && state.status === 'idle') list.append(continueRow());
+  if (state.followUps?.length && state.status === 'idle' && !state.question) list.append(followUpsRow(state.followUps));
   if (steerFocused) document.getElementById('skill-focus')?.focus();
   announce(entries);
   list.scrollTop = list.scrollHeight;
@@ -488,9 +491,19 @@ function keepAlive(busy: boolean): void {
 type Entry = PanelState['transcript'][number];
 type StepEntry = Extract<Entry, { kind: 'action' }>;
 
-/** Notes about approvals: history once answered, folded with the steps around them. */
+/** Notes about approvals, skills and retries: history once past, folded with the steps around them. */
 function foldable(entry: Entry): boolean {
-  return entry.kind === 'notice' && /^(Asking you|Allowed|Denied|Using skill)/.test(entry.text);
+  return entry.kind === 'notice' && (/^(Asking you|Allowed|Denied|Using skill)/.test(entry.text) || /Trying again…$/.test(entry.text));
+}
+
+/** What a stretch of work is made of: steps, the agent's words between them, and the notes that fold. */
+function inStretch(entry: Entry): boolean {
+  return entry.kind === 'action' || entry.kind === 'agent' || foldable(entry);
+}
+
+/** The first line of what the agent said, for a fold's summary. */
+function firstLine(text: string): string {
+  return text.replace(/[*_`#>]/g, '').split('\n').map((line) => line.trim()).find((line) => line.length > 0) ?? '';
 }
 
 /** Folds the owner opened, by the index of their first entry, so a re-render keeps them open. */
@@ -555,12 +568,16 @@ function activity(group: Entry[], key: number, live = false): HTMLLIElement[] {
   const summary = document.createElement('summary');
   const problems = steps.filter((step) => step.outcome !== 'ok' && step.outcome !== 'pending');
   const telling = [...steps].reverse().find((step) => step.text !== 'Read the page') ?? steps.at(-1)!;
+  const notes = group.filter((entry): entry is Extract<Entry, { kind: 'agent' }> => entry.kind === 'agent');
   const count = document.createElement('span');
   count.className = 'count-steps';
-  count.textContent = `${steps.length} step${steps.length === 1 ? '' : 's'}`;
+  count.textContent = `${steps.length} step${steps.length === 1 ? '' : 's'}${notes.length > 0 ? ` · ${notes.length} note${notes.length === 1 ? '' : 's'}` : ''}`;
+  // The line says the newest thing that tells: the agent's last note, unless a step that was more than reading the page came after it.
+  const lastNote = notes.at(-1);
+  const actedSince = lastNote ? group.slice(group.indexOf(lastNote) + 1).some((entry) => entry.kind === 'action' && entry.text !== 'Read the page') : false;
   const latest = document.createElement('span');
   latest.className = 'latest';
-  latest.textContent = stepText(telling);
+  latest.textContent = lastNote && !actedSince ? firstLine(lastNote.text) : stepText(telling);
   summary.append(count, latest);
   if (live) summary.append(dots());
   if (problems.length > 0 && !(problems.length === 1 && problems[0] === telling)) {
@@ -587,9 +604,33 @@ function activity(group: Entry[], key: number, live = false): HTMLLIElement[] {
   }
   const list = document.createElement('ol');
   list.className = 'activity-steps';
+  let lastNotice: HTMLLIElement | undefined;
+  let repeats = 1;
   for (const entry of group) {
-    if (entry.kind === 'action') list.append(stepRow(entry, !onTheLine.has(entry)));
-    else { const note = document.createElement('li'); note.className = 'notice'; note.textContent = entry.kind === 'notice' ? entry.text : ''; list.append(note); }
+    if (entry.kind === 'action') { list.append(stepRow(entry, !onTheLine.has(entry))); lastNotice = undefined; continue; }
+    if (entry.kind === 'agent') {
+      // The agent's working notes, as it wrote them, quieter than its answer.
+      const note = document.createElement('li');
+      note.className = 'note';
+      note.append(renderMarkdown(document, entry.text, { image: imageButton }));
+      list.append(note);
+      lastNotice = undefined;
+      continue;
+    }
+    if (entry.kind !== 'notice') continue;
+    // The same note again and again (a retry after a retry) is one line, counted.
+    if (lastNotice && lastNotice.dataset['text'] === entry.text) {
+      repeats += 1;
+      lastNotice.textContent = `${entry.text} (×${repeats})`;
+      continue;
+    }
+    const notice = document.createElement('li');
+    notice.className = 'notice';
+    notice.textContent = entry.text;
+    notice.dataset['text'] = entry.text;
+    list.append(notice);
+    lastNotice = notice;
+    repeats = 1;
   }
   details.append(summary, list);
   item.append(details);
@@ -1132,6 +1173,25 @@ async function renderLimit(): Promise<void> {
 }
 
 /** After a run stopped at its limit: Continue, as the owner would say it. */
+/** The next steps the agent offered under its answer: each chip sends its words as the owner's next message. */
+function followUpsRow(followUps: string[]): HTMLLIElement {
+  const row = document.createElement('li');
+  row.className = 'follow-ups';
+  row.setAttribute('aria-label', 'Suggested next steps');
+  for (const label of followUps) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'follow-up';
+    chip.textContent = label;
+    chip.onclick = () => {
+      $<HTMLTextAreaElement>('goal').value = label;
+      submit();
+    };
+    row.append(chip);
+  }
+  return row;
+}
+
 function continueRow(): HTMLLIElement {
   const item = document.createElement('li');
   item.className = 'continue-row';

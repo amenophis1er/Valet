@@ -37,6 +37,8 @@ export interface Persisted {
   atLimit?: boolean;
   /** The agent's own notes for this conversation (notepad.ts). */
   notepad?: string;
+  /** Next steps the agent offered under its last answer (suggest.ts); gone with the owner's next message. */
+  followUps?: string[];
   /** Messages the owner sent mid-run, not yet given to the model: a restart must not lose them. */
   amendments?: Array<string | AIContentPart[]>;
 }

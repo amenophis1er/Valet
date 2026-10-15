@@ -31,6 +31,7 @@ import type { Note } from '../executor/commands.js';
 import { Approvals } from './approvals.js';
 import { ASK_TOOL, Questions } from './ask.js';
 import { NOTEPAD_TOOL, withNotepad, writeNote } from './notepad.js';
+import { SUGGEST_TOOL, parseSuggestions } from './suggest.js';
 import type { LoopHost } from './host.js';
 import { Learn } from './learn.js';
 import { Lifecycle } from './lifecycle.js';
@@ -185,7 +186,7 @@ export class AgentLoop {
       handedTab: s.handedTab, connection: s.connection ? { label: s.connection.label, model: s.connection.model } : null, actions: s.actions,
       ...(s.approval ? { approval: s.approval } : {}), mode: s.scope.mode, workspace: s.workspace ?? null,
       ...(s.stepWait ? { stepWait: s.stepWait } : {}), learning: this.#learn.on, ...(s.question ? { question: s.question } : {}),
-      ...(s.atLimit ? { atLimit: true } : {}), ...(s.notepad ? { notepad: s.notepad } : {}) };
+      ...(s.atLimit ? { atLimit: true } : {}), ...(s.notepad ? { notepad: s.notepad } : {}), ...(s.followUps?.length ? { followUps: s.followUps } : {}) };
   }
 
   /** Learn on or off, from the composer. Off while a step waits lets that step go. */
@@ -371,6 +372,8 @@ export class AgentLoop {
     this.#life.to('running');
     s.pauseReason = undefined;
     s.atLimit = undefined;
+    // The owner said something new: the follow-ups offered under the last answer are history.
+    delete s.followUps;
     s.actions = 0;
     s.startedAt = this.#now();
     const shown = await this.#media.keepAttachments(attachments);
@@ -497,7 +500,7 @@ export class AgentLoop {
           this.#trace.record({ kind: 'model-request', turn, messages: messages.length, chars: JSON.stringify(messages).length });
           const sent = this.#now();
           const answer = await deps.chat({
-            system: SYSTEM_PROMPT, messages, tools: [BROWSER_TOOL, SAVE_FILE_TOOL, ASK_TOOL, NOTEPAD_TOOL],
+            system: SYSTEM_PROMPT, messages, tools: [BROWSER_TOOL, SAVE_FILE_TOOL, ASK_TOOL, NOTEPAD_TOOL, SUGGEST_TOOL],
             connectionId: connection.id, connectionRevision: connection.revision, model: connection.model, maxTokens,
           }, { signal: this.#abort!.signal });
           this.#trace.record({ kind: 'model-response', turn, ms: this.#now() - sent, ok: answer.ok,
@@ -612,6 +615,15 @@ export class AgentLoop {
         if (written.notepad) s.notepad = written.notepad; else delete s.notepad;
         s.transcript.push({ kind: 'action', text: written.step, outcome: 'ok' });
         this.#answer(call, written.result, false);
+        await this.#save();
+        continue;
+      }
+      if (call.name === SUGGEST_TOOL.name) {
+        // Follow-ups under the answer: kept with the conversation until the owner's next message, never a step.
+        const suggested = parseSuggestions(call.args);
+        if ('error' in suggested) { this.#answer(call, { error: suggested.error }, true); failed = true; continue; }
+        s.followUps = suggested.next;
+        this.#answer(call, { shown: suggested.next.length }, false);
         await this.#save();
         continue;
       }
