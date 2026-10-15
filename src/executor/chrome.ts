@@ -53,6 +53,8 @@ export interface ChromeLike {
     sendCommand(target: { tabId: number }, method: string, params?: unknown): Promise<unknown>;
     /** Chrome took the debugger away: the tab closed, or the owner dismissed the yellow bar. */
     onDetach: { addListener(listener: (source: { tabId?: number }, reason?: string) => void): void };
+    /** Events of the enabled domains, while attached: a dialog opening or closing (Page). */
+    onEvent: { addListener(listener: (source: { tabId?: number }, method: string, params?: unknown) => void): void };
   };
 }
 

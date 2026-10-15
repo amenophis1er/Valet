@@ -19,6 +19,7 @@
         "select",
         "press",
         "scroll",
+        "dialog",
         "tab",
         "close"
       ]
@@ -206,7 +207,15 @@
     "value": {
       "type": "string",
       "maxLength": 10000,
-      "description": "Required for fill (the text) and select (an option label, text or value)."
+      "description": "Required for fill (the text) and select (an option label, text or value); dialog takes it as the text to answer a prompt with."
+    },
+    "response": {
+      "type": "string",
+      "enum": [
+        "accept",
+        "dismiss"
+      ],
+      "description": "Required for dialog: \"accept\" presses OK on the page's open alert, confirm or prompt, \"dismiss\" presses Cancel."
     },
     "key": {
       "type": "string",
@@ -245,7 +254,7 @@
     "observation": {
       "type": "string",
       "maxLength": 80,
-      "description": "REQUIRED for click, hover, drag, fill, select, press and scroll. Copy observation.id from the most recent result, including recovery results. Never reuse after a dispatched action."
+      "description": "REQUIRED for click, hover, drag, fill, select, press, scroll and dialog. Copy observation.id from the most recent result, including recovery results. Never reuse after a dispatched action."
     }
   }
 }

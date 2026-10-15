@@ -13,9 +13,9 @@ Semantic links use by:"role",role:"link",name:"...". click takes count:2 for a d
 A menu item that opens a submenu: hover it, observe, then click the item in the submenu.
 When a screenshot shows something the observation cannot name (a canvas, a map, a chart, a custom control), click it by point: {action:"click",observation:"COPY_LATEST_ID",screenshot:"COPY_SCREENSHOT_ID",point:{x,y}} in the image's pixels.
 Refs are exact; points are for what has no ref.
-A grey area cannot be clicked. hover moves the mouse onto a target or point without clicking (menus that open on hover, tooltips). drag presses on a target or point and releases on `to` (a target or point): sliders, maps, reordering, drawing. fill replaces the value of a non-password text field. select picks an option by its label, text or value. press sends a listed key to a target. scroll moves the page up or down. tab switches to a tabId from observation.tabs.
+A grey area cannot be clicked. hover moves the mouse onto a target or point without clicking (menus that open on hover, tooltips). drag presses on a target or point and releases on `to` (a target or point): sliders, maps, reordering, drawing. fill replaces the value of a non-password text field. select picks an option by its label, text or value. press sends a listed key to a target. scroll moves the page up or down. dialog answers an alert, confirm or prompt the page has opened (the observation says so; nothing else works on that page until it is answered): response "accept" (OK) or "dismiss" (Cancel), with value as the text for a prompt. tab switches to a tabId from observation.tabs.
 A link that opens a new tab opens one of yours: observe then reads it. close closes this conversation's tabs.
-Frames from the same site are reachable; frames from other sites are not. click, hover, drag, fill, select, press and scroll ALWAYS require the latest observation.id.
+Frames from the same site are reachable; frames from other sites are not. click, hover, drag, fill, select, press, scroll and dialog ALWAYS require the latest observation.id.
 After a failure the result says what happened: a refusal means nothing was dispatched; "outcome unknown" means the action may have happened.
 New sites and form submissions may need the owner's approval; a denial is final for that action.
 Never retry possibly submitted input.

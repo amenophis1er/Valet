@@ -27,6 +27,8 @@ export interface Observation {
   tabs: Array<{ id: string; url: string; title: string }>;
   capturedAt: string;
   screenshotSize?: { width: number; height: number };
+  /** An alert, confirm or prompt the page has open: the page waits for it, and the tree says only that. Its words are the page's. */
+  dialog?: { type: string; message: string; defaultValue?: string };
 }
 
 /** The executor runs exactly the browser tool's actions (src/actions). */

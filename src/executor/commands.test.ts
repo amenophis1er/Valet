@@ -25,6 +25,7 @@ const PAGE: FrameResult = {
 interface FakeTab { id: number; url: string; title: string; status: string; groupId: number; windowId: number; active: boolean; index?: number; pinned?: boolean; openerTabId?: number }
 
 type DebuggerDetach = (source: { tabId?: number }, reason?: string) => void;
+type DebuggerEvent = (source: { tabId?: number }, method: string, params?: unknown) => void;
 
 type FrameAnswer = { frameId: number; documentId?: string; result: FrameResult | null };
 
@@ -43,7 +44,14 @@ function fakeChrome(frames: FrameAnswer[] = [{ frameId: 0, documentId: 'doc-0', 
   const injected: string[] = [];
   const tabs = new Map<number, FakeTab>();
   const windows = new Map<number, { id: number; focused: boolean }>([[1, { id: 1, focused: true }]]);
-  const failures: { attach?: string; /** The nth debugger command (1-based) fails with this. */ commandFails?: { at: number; message: string } } = {};
+  const failures: { attach?: string; /** The nth debugger command (1-based) fails with this. */ commandFails?: { at: number; message: string };
+    /** The next click's release opens this dialog (Page.javascriptDialogOpening's params), and the release never answers. */
+    opensDialog?: { type: string; message: string; defaultPrompt?: string };
+    /** Chrome's answer to handling a dialog when none is up. */
+    noDialog?: boolean } = {};
+  const events: DebuggerEvent[] = [];
+  /** The tabs Page events were enabled on, one entry per attach. */
+  const enabled: number[] = [];
   let commands = 0;
   /*
    * What the page side answers when the worker locates an element it is about
@@ -119,17 +127,32 @@ function fakeChrome(frames: FrameAnswer[] = [{ frameId: 0, documentId: 'doc-0', 
     debugger: {
       async attach({ tabId }: { tabId: number }) { if (failures.attach) throw new Error(failures.attach); attachments.push(tabId); },
       async detach() { dispatched.push('detach'); },
-      async sendCommand(_target: unknown, method: string, params?: unknown) {
+      async sendCommand(target: { tabId: number }, method: string, params?: unknown) {
+        // Housekeeping on attach, counted apart so every test's view of what an action dispatched stays the same.
+        if (method === 'Page.enable') { enabled.push(target.tabId); return {}; }
+        if (method === 'Page.handleJavaScriptDialog') {
+          if (failures.noDialog) throw new Error('No dialog is showing');
+          sent.push({ method, params });
+          dispatched.push(method);
+          return {};
+        }
         commands += 1;
         if (failures.commandFails && commands === failures.commandFails.at) throw new Error(failures.commandFails.message);
+        if (failures.opensDialog && method === 'Input.dispatchMouseEvent' && (params as { type?: string }).type === 'mouseReleased') {
+          // The click opened a prompt: Chrome reports it, and the command itself never answers while the dialog is up.
+          dispatched.push(method);
+          for (const listener of events) listener({ tabId: target.tabId }, 'Page.javascriptDialogOpening', failures.opensDialog);
+          return new Promise(() => undefined);
+        }
         dispatched.push(method);
         sent.push({ method, params });
         return { data: 'iVBORw0KGgo=' };
       },
       onDetach: { addListener(listener: DebuggerDetach) { detaches.push(listener); } },
+      onEvent: { addListener(listener: DebuggerEvent) { events.push(listener); } },
     },
   } as unknown as WorkerChrome;
-  return { chrome, located, dispatched, sent, attachments, detaches, injected, tabs, windows, failures, field, page, goneDocuments, targets, groupCalls, ungrouped, groupTitles };
+  return { chrome, located, dispatched, sent, attachments, detaches, events, enabled, injected, tabs, windows, failures, field, page, goneDocuments, targets, groupCalls, ungrouped, groupTitles };
 }
 
 const command = (name: Command['name'], args: Record<string, unknown> = {}): Command => ({ id: 'c1', name, session: 's1', args });
@@ -1284,5 +1307,57 @@ describe('double and right clicks', () => {
     await commands.run(command('click', { target: { ref: 'e2' }, button: 'right' }));
     const presses = mouse(sent).filter((event) => event.type !== 'mouseMoved');
     expect(presses.map((event) => `${event.type}:${event.button}`)).toEqual(['mousePressed:right', 'mouseReleased:right']);
+  });
+});
+
+describe('a dialog the page opens', () => {
+  it('ends the click that opened it, shows in the observation instead of a tree, and keeps other input off the page until answered', async () => {
+    const { commands, failures, dispatched, enabled } = await opened();
+    await commands.run(command('observe'));
+    failures.opensDialog = { type: 'prompt', message: 'Your price?', defaultPrompt: '0' };
+    // The release never answers while the prompt is up: the click still comes back, because the dialog is the answer.
+    await commands.run(command('click', { target: { ref: 'e2' } }));
+    expect(enabled).toEqual([101]); // Page events were enabled with the attach
+    expect(dispatched.filter((method) => method === 'Input.dispatchMouseEvent')).toHaveLength(3);
+
+    const { observation } = await commands.run(command('observe'));
+    expect(observation!.dialog).toEqual({ type: 'prompt', message: 'Your price?', defaultValue: '0' });
+    expect(observation!.targets).toEqual([]);
+    expect(observation!.tree).toContain('The page has a prompt dialog open and waits for it: "Your price?" (default answer "0").');
+    expect(observation!.tree).toContain('use the dialog action');
+    expect(observation!.tabs).toHaveLength(1);
+
+    failures.opensDialog = undefined;
+    await expect(commands.run(command('fill', { target: { ref: 'e3' }, value: 'x' }))).rejects.toThrow(/prompt dialog open.*Answer it with the dialog action first/);
+    await expect(commands.run(command('screenshot'))).rejects.toThrow(PreconditionError);
+    expect(dispatched.filter((method) => method === 'Input.insertText')).toHaveLength(0);
+  });
+
+  it('is answered through the debugger: OK with the prompt text, or Cancel, and the page is read again after', async () => {
+    const { commands, failures, sent } = await opened();
+    await commands.run(command('observe'));
+    failures.opensDialog = { type: 'prompt', message: 'Your price?' };
+    await commands.run(command('click', { target: { ref: 'e2' } }));
+    failures.opensDialog = undefined;
+    await commands.run(command('observe'));
+    await commands.run(command('dialog', { response: 'accept', value: '£10.69' }));
+    expect(sent.at(-1)).toEqual({ method: 'Page.handleJavaScriptDialog', params: { accept: true, promptText: '£10.69' } });
+    const { observation } = await commands.run(command('observe'));
+    expect(observation!.dialog).toBeUndefined();
+    expect(observation!.targets!.length).toBeGreaterThan(0);
+
+    failures.opensDialog = { type: 'confirm', message: 'Sure?' };
+    await commands.run(command('click', { target: { ref: 'e2' } }));
+    failures.opensDialog = undefined;
+    await commands.run(command('observe'));
+    await commands.run(command('dialog', { response: 'dismiss', value: 'ignored' }));
+    expect(sent.at(-1)).toEqual({ method: 'Page.handleJavaScriptDialog', params: { accept: false } });
+  });
+
+  it('is a plain refusal when there is none to answer', async () => {
+    const { commands, failures } = await opened();
+    await commands.run(command('observe'));
+    failures.noDialog = true;
+    await expect(commands.run(command('dialog', { response: 'accept' }))).rejects.toThrow(/No dialog is open on this page/);
   });
 });

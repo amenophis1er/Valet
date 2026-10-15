@@ -36,7 +36,9 @@ companion app.
 
 - **Drive pages** — click, hover, drag, type, choose options, press keys,
   scroll, switch and close its own tabs. Input is real browser input (through Chrome's
-  debugger), so it works on pages that ignore scripted events.
+  debugger), so it works on pages that ignore scripted events. A page's own
+  alert, confirm or prompt is seen the moment it opens and answered as a
+  step (OK, Cancel, or OK with text), so it never stalls a run.
 - **See the page** — as an accessibility tree with a ref for every element,
   and, when layout or images matter, as a **screenshot** it can take itself.
   To summarize or answer from a long page, it **reads** the page's text — the

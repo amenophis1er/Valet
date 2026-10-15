@@ -9,10 +9,23 @@ const read = (id: string, part: number) => tool(id, { completed: true, read: { u
 const parsed = (message: AIMessage) => JSON.parse(String(message.content)) as Record<string, Record<string, unknown>>;
 
 describe('the history the model reads', () => {
-  it('keeps the three newest observations in full, older ones as url and title', () => {
-    const view = historyView(['a', 'b', 'c', 'd'].map(observed));
+  it('keeps the three newest big observations in full, older ones as url and title', () => {
+    const big = (id: string) => tool(id, { completed: true, observation: { id, url: 'https://example.test/', title: 'Example', tree: `tree ${id} ${'x'.repeat(30_000)}` }, notice: 'n' });
+    const view = historyView(['a', 'b', 'c', 'd'].map(big));
     expect(parsed(view[0]!)['observation']).toEqual({ url: 'https://example.test/', title: 'Example', compacted: expect.stringMatching(/no longer shown.*Work from your notepad/) });
     for (const message of view.slice(1)) expect(parsed(message)['observation']!['tree']).toMatch(/^tree /);
+  });
+
+  it('keeps small observations in full past the newest three, while they fit the budget: a result line is not cut from under the model', () => {
+    // A dialog answered on a small page, three times over: six small observations, all still readable.
+    const view = historyView(['a', 'b', 'c', 'd', 'e', 'f'].map(observed));
+    for (const message of view) expect(parsed(message)['observation']!['tree']).toMatch(/^tree /);
+    // Big pages still fall to url and title past the newest three.
+    const big = (id: string) => tool(id, { completed: true, observation: { id, url: 'https://example.test/', title: 'Example', tree: `tree ${id} ${'x'.repeat(30_000)}` }, notice: 'n' });
+    const mixed = historyView([observed('s1'), big('b1'), big('b2'), big('b3'), big('b4')]);
+    expect(parsed(mixed[0]!)['observation']!['compacted']).toBeDefined();
+    expect(parsed(mixed[1]!)['observation']!['compacted']).toBeDefined();
+    for (const message of mixed.slice(2)) expect(parsed(message)['observation']!['tree']).toMatch(/^tree /);
   });
 
   it('keeps page text in full up to its budget, newest first, and says what an older part was', () => {
