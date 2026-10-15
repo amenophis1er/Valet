@@ -1468,4 +1468,34 @@ describe('next steps the agent offers', () => {
     expect(h.loop.state.followUps).toBeUndefined();
     expect(JSON.stringify(h.requests[1]!.messages.at(-1)!.content)).toContain('Invalid suggest_next call');
   });
+
+  it('asks once for the answer when the run would end with buttons and no words', async () => {
+    const h = harness([
+      callTurn({ id: 's1', name: 'suggest_next', args: { next: ['Click Verify'] } }),
+      () => ({ ok: true, text: '', stopReason: 'end' }),
+      () => ({ ok: true, text: 'The tag is live.', stopReason: 'end' }),
+    ]);
+    await h.loop.run('What now?');
+    expect(h.requests).toHaveLength(3);
+    expect(String(h.requests[2]!.messages.at(-1)!.content)).toMatch(/no words, so the owner saw no answer/);
+    expect(h.loop.state.transcript.at(-1)).toMatchObject({ kind: 'agent', text: 'The tag is live.' });
+    expect(h.loop.state.followUps).toEqual(['Click Verify']);
+    expect(wellFormed(h.saved()!.history)).toBe(true);
+
+    // Said nothing twice: the run ends all the same.
+    const mute = harness([
+      () => ({ ok: true, text: '', stopReason: 'end' }),
+      () => ({ ok: true, text: '', stopReason: 'end' }),
+    ]);
+    await mute.loop.run('What now?');
+    expect(mute.requests).toHaveLength(2);
+    expect(mute.loop.state.status).toBe('idle');
+
+    // An answer before the quiet turn is an answer: no nudge.
+    const spoke = harness([
+      () => ({ ok: true, text: 'Done.', stopReason: 'end' }),
+    ]);
+    await spoke.loop.run('What now?');
+    expect(spoke.requests).toHaveLength(1);
+  });
 });
