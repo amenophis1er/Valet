@@ -79,6 +79,8 @@ const SETTLE_STEP_MS = 50;
 const OBSERVE_RETRY_MS = [500, 1_000, 2_000];
 /** How long the agent's cursor takes to glide to a target before it acts. */
 const CURSOR_MS = 350;
+/** How long after an action a tab a page opens from one of the session's tabs still counts as the action's doing, not the owner's. */
+const ADOPT_WINDOW_MS = 3_000;
 
 /** How long Page.enable gets to come back before the renderer is taken to be held by a dialog. */
 const ENABLE_TIMEOUT_MS = 2_000;
@@ -207,8 +209,11 @@ export class BrowserCommands implements Executor {
   #dialogWaiters = new Map<number, Set<() => void>>();
   /** Tabs whose open dialog holds the debugger attached (one count of #attached), so the dialog outlives the action that opened it and its closing is heard. */
   #dialogHolds = new Set<number>();
+  /** Per session: Infinity while an action that can open a tab is under way, else when the last one ended (claimOpened). */
+  #acting = new Map<string, number>();
+  #now: () => number;
 
-  constructor(chrome: WorkerChrome, options: { uuid?: () => string; contentFile?: string; wait?: (ms: number) => Promise<void>; beforeNavigate?: (tabId: number) => Promise<void>; imaging?: Imaging; random?: () => number;
+  constructor(chrome: WorkerChrome, options: { uuid?: () => string; contentFile?: string; wait?: (ms: number) => Promise<void>; beforeNavigate?: (tabId: number) => Promise<void>; imaging?: Imaging; random?: () => number; now?: () => number;
     /** The tab a session's conversation belongs to: its new tabs open beside it when no tab was handed over. */
     anchor?: (session: string) => number | undefined;
     /** Where the sessions' tabs are kept, so a restarted worker still knows them (chrome.storage.session). */
@@ -216,6 +221,7 @@ export class BrowserCommands implements Executor {
     this.#chrome = chrome;
     this.#imaging = options.imaging ?? canvasImaging;
     this.#random = options.random ?? Math.random;
+    this.#now = options.now ?? Date.now;
     this.#store = options.store;
     this.#anchorOf = options.anchor;
     this.#beforeNavigate = options.beforeNavigate ?? (async () => undefined);
@@ -295,9 +301,14 @@ export class BrowserCommands implements Executor {
   }
 
   async run(command: Command, cancel: Cancellation = new Cancellation()): Promise<CommandResult> {
+    // While an action that can make a page open a tab is under way, and for a moment after, a tab opened from one of
+    // the session's tabs is taken to be the page's doing (claimOpened); outside that, it is the owner's own.
+    const acting = command.name in INPUT || command.name === 'navigate';
+    if (acting) this.#acting.set(command.session, Number.POSITIVE_INFINITY);
     try {
       return await this.#dispatch(command, cancel);
     } finally {
+      if (acting) this.#acting.set(command.session, this.#now());
       // Commands open, switch, forget and close tabs: keep what the session knows.
       this.#persist();
     }
@@ -696,6 +707,10 @@ export class BrowserCommands implements Executor {
   async claimOpened(tabId: number, openerTabId: number): Promise<boolean> {
     const session = [...this.#sessions.values()].find((candidate) => [...candidate.tabs.values()].includes(openerTabId));
     if (!session || [...session.tabs.values()].includes(tabId)) return false;
+    // Only while the session acts, or just after: a tab the owner opens from the agent's page (a link with ⌘, "open in
+    // new tab") has the same opener, and is theirs.
+    const acted = this.#acting.get(session.id) ?? Number.NEGATIVE_INFINITY;
+    if (this.#now() - acted > ADOPT_WINDOW_MS) return false;
     const tab = await this.#chrome.tabs.get(tabId).catch(() => undefined);
     if (!tab) return false;
     const key = `tab-${this.#uuid().slice(0, 12)}`;
