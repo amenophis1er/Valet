@@ -120,9 +120,11 @@ input[type=checkbox] { width: auto; height: auto; }
   align-self: flex-end; max-width: 84%; padding: 9px 13px; border-radius: 14px 14px 4px 14px;
   background: var(--v-accent-soft); border: 1px solid var(--v-accent-line); color: var(--v-text); white-space: pre-wrap;
 }
-.owner-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; justify-content: flex-end; white-space: normal; }
-.owner-attachments .shot { width: 56px; height: 56px; min-height: 0; padding: 0; border: 0; border-radius: var(--v-radius-md); overflow: hidden; cursor: zoom-in; }
-.owner-attachments .shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* What the owner attached: its own row above the bubble, right-aligned, rounded cards; the bubble below is the words. */
+.owner-attachments { display: flex; flex-wrap: wrap; gap: 6px; align-self: flex-end; justify-content: flex-end; max-width: 84%; margin-bottom: -4px; }
+.owner-attachments .shot { width: 72px; height: 72px; min-height: 0; padding: 0; border: 1px solid var(--v-line); border-radius: 12px; overflow: hidden; cursor: zoom-in; background: var(--v-surface-raised); }
+.owner-attachments .shot:hover { border-color: var(--v-accent-line); }
+.owner-attachments .shot img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
 .owner-attachments .chip-file { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px 0 4px; border-radius: var(--v-radius-md); border: 1px solid var(--v-line); background: var(--v-surface-raised); font-size: var(--v-fs-xs); max-width: 200px; }
 .owner-attachments .chip-file span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* A long message folds to its first lines, fading out, with Show more under it. */
@@ -214,6 +216,16 @@ input[type=checkbox] { width: auto; height: auto; }
 .activity .more-shots { font-size: var(--v-fs-2xs); line-height: var(--v-lh-2xs); font-weight: 600; color: var(--v-text-muted); font-variant-numeric: tabular-nums; }
 .activity-steps { list-style: none; margin: 2px 0 2px 8px; padding: 0 0 0 12px; border-left: 1px solid var(--v-line); display: flex; flex-direction: column; gap: 2px; }
 .activity-steps .notice { padding-left: 0; }
+/* The agent's working notes inside a fold: its words, quieter than its answer. */
+.activity-steps .note { padding: 3px 0 3px 23px; font-size: var(--v-fs-sm); line-height: var(--v-lh-sm); color: var(--v-text-muted); }
+.activity-steps .note > :first-child { margin-top: 0; }
+.activity-steps .note > :last-child { margin-bottom: 0; }
+/* The next steps the agent offered under its answer: chips that send their words as the next message. */
+.follow-ups { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -2px; }
+.follow-up { min-height: 30px; padding: 0 12px; border-radius: var(--v-radius-pill); border: 1px solid var(--v-accent-line); background: var(--v-accent-soft); color: var(--v-accent-text); font-size: var(--v-fs-xs); font-weight: 600; white-space: normal; text-align: left; }
+.follow-up:hover { background: var(--v-accent-line); }
+/* The approval mode, one line, the explanation in its tooltip. */
+.notice.chip { font-style: normal; display: inline-flex; align-self: flex-start; align-items: center; height: 22px; padding: 0 9px; border-radius: var(--v-radius-pill); background: var(--v-surface-sunk); border: 1px solid var(--v-line); color: var(--v-text-muted); }
 
 /* Working: three dots on the line still growing. */
 .dots { display: inline-flex; gap: 3px; align-items: center; margin-left: auto; flex: none; }
@@ -262,7 +274,11 @@ input[type=checkbox] { width: auto; height: auto; }
 .ask-head { display: flex; align-items: center; gap: 6px; font-size: var(--v-fs-xs); line-height: var(--v-lh-xs); font-weight: 600; color: var(--v-text-muted); }
 .ask-head svg { width: 14px; height: 14px; stroke-width: 2; }
 .ask-text { font-size: var(--v-fs-sm); line-height: var(--v-lh-sm); font-weight: 650; }
-.ask-options { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+/* Room inside the scroll box for the options' borders and focus ring, and a gutter of its own for the scrollbar, so neither is cut or covered. */
+.ask-options { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; padding: 3px; margin: -3px; scrollbar-gutter: stable; }
+.ask-option:focus-visible { outline-offset: -2px; }
+/* The one the agent suggests reads as the default from the start, not only once pressed. */
+.ask-option:has(.tag) { border-color: var(--v-accent-line); }
 .ask-option { display: flex; flex: none; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; min-height: 40px; height: auto; padding: 8px 12px; text-align: left; white-space: normal; border-radius: var(--v-radius-md); }
 .ask-option .label { display: flex; align-items: flex-start; gap: 8px; font-weight: 600; overflow-wrap: anywhere; }
 .ask-option .hint { font-size: var(--v-fs-xs); line-height: 17px; font-weight: 400; color: var(--v-text-muted); overflow-wrap: anywhere; }
@@ -367,7 +383,11 @@ button.stop:hover { background: var(--v-danger-soft); }
   border-radius: var(--v-radius-lg); border: 1px solid var(--v-line); background: var(--v-surface-raised); box-shadow: var(--v-shadow-2);
   animation: v-menu-in var(--v-dur-base) var(--v-ease-out);
 }
-.menu.top-menu { left: auto; right: 8px; bottom: auto; top: calc(100% + 6px); width: min(286px, calc(100vw - 16px)); }
+/* The ⋯ menu: as tall as its items need (within the panel), and no icon column, since none of its items has one. */
+.menu.top-menu { left: auto; right: 8px; bottom: auto; top: calc(100% + 6px); width: min(286px, calc(100vw - 16px)); max-height: calc(100vh - 96px); }
+.menu.top-menu button { grid-template-columns: 1fr; column-gap: 0; }
+.menu.top-menu button::before { display: none; }
+.menu.top-menu .title, .menu.top-menu small { grid-column: 1; }
 .menu button {
   display: grid; grid-template-columns: 18px 1fr; column-gap: 10px; row-gap: 1px; align-items: start; justify-items: start;
   width: 100%; min-height: 0; padding: 8px 10px; border: 0; border-radius: var(--v-radius-sm); background: transparent; text-align: left; white-space: normal;

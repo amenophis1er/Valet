@@ -133,7 +133,7 @@ describe('a run', () => {
     expect(h.loop.state.status).toBe('idle');
     expect(h.loop.state.transcript.map((entry) => entry.kind)).toEqual(['owner', 'action', 'action', 'agent']);
     expect(h.loop.state.handedTab).toEqual({ title: 'Shop', url: 'https://shop.test/' });
-    expect(h.requests[0]).toMatchObject({ connectionId: 'c1', connectionRevision: 3, model: 'test-model', tools: [{ name: 'browser' }, { name: 'save_file' }, { name: 'ask_owner' }, { name: 'notepad' }] });
+    expect(h.requests[0]).toMatchObject({ connectionId: 'c1', connectionRevision: 3, model: 'test-model', tools: [{ name: 'browser' }, { name: 'save_file' }, { name: 'ask_owner' }, { name: 'notepad' }, { name: 'suggest_next' }] });
     expect(String(h.requests[0]!.messages[0]!.content)).toContain('You are working in that tab: observe it first.');
     expect(wellFormed(h.saved()!.history)).toBe(true);
   });
@@ -715,7 +715,7 @@ describe('screenshots and files', () => {
     expect(file).toMatchObject({ kind: 'file', name: 'lom- summary.html.txt', mimeType: 'text/plain', bytes: 21 });
     expect(h.media.get((file as { id: string }).id)).toEqual({ kind: 'file', name: 'lom- summary.html.txt', mimeType: 'text/plain', content: 'Lomé is the capital.' });
     expect(h.loop.state.actions).toBe(0);
-    expect(h.requests[0]!.tools!.map((tool) => tool.name)).toEqual(['browser', 'save_file', 'ask_owner', 'notepad']);
+    expect(h.requests[0]!.tools!.map((tool) => tool.name)).toEqual(['browser', 'save_file', 'ask_owner', 'notepad', 'suggest_next']);
     const tool = h.requests[1]!.messages.find((message) => message.role === 'tool')!;
     expect(String(tool.content)).toContain('do not say it was downloaded');
   });
@@ -1437,5 +1437,35 @@ describe('the notepad', () => {
     const h = harness([callTurn({ id: 'n1', name: 'notepad', args: { append: 'Population: 2.1 million (2020)' } }), done]);
     await h.loop.run('Note it');
     expect(h.states.at(-1)!.notepad).toBe('Population: 2.1 million (2020)');
+  });
+});
+
+describe('next steps the agent offers', () => {
+  const done: Turn = () => ({ ok: true, text: 'Two mugs match.', stopReason: 'end' });
+
+  it('shows them under the answer, not as steps, keeps them with the conversation, and drops them with the next message', async () => {
+    const h = harness([
+      callTurn({ id: 's1', name: 'suggest_next', args: { next: ['Add both to the cart', 'Add both to the cart', 'Compare the sellers'] } }),
+      done,
+      done,
+    ]);
+    await h.loop.run('Find the blue mugs');
+    expect(h.loop.state.followUps).toEqual(['Add both to the cart', 'Compare the sellers']); // the repeat dropped
+    expect(h.saved()!.followUps).toEqual(['Add both to the cart', 'Compare the sellers']);
+    expect(h.loop.state.actions).toBe(0);
+    expect(h.loop.state.transcript.filter((entry) => entry.kind === 'action')).toEqual([]);
+    expect(String(h.requests[1]!.messages.at(-1)!.content)).toContain('"shown":2');
+    await h.loop.run('Add both to the cart');
+    expect(h.loop.state.followUps).toBeUndefined();
+  });
+
+  it('refuses a malformed call and offers nothing', async () => {
+    const h = harness([
+      callTurn({ id: 's1', name: 'suggest_next', args: { next: [] } }),
+      done,
+    ]);
+    await h.loop.run('Find the blue mugs');
+    expect(h.loop.state.followUps).toBeUndefined();
+    expect(JSON.stringify(h.requests[1]!.messages.at(-1)!.content)).toContain('Invalid suggest_next call');
   });
 });

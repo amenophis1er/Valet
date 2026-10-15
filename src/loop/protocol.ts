@@ -125,6 +125,8 @@ export interface PanelState {
   atLimit?: boolean;
   /** The agent's notes for this conversation, for the owner to read. */
   notepad?: string;
+  /** Next steps the agent offered under its last answer: chips that send their words as the owner's next message. The model's words. */
+  followUps?: string[];
 }
 
 /** A question the agent asked with `ask_owner`. Its words are the model's, and may come from a page: never an approval. */
