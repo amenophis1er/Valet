@@ -313,7 +313,26 @@ export class BrowserCommands implements Executor {
     }
     if (command.name in INPUT) {
       if (this.#pace === 'natural') await this.#pause(500, 1500, cancel);
-      return INPUT[command.name as InputName](this.#driver, command, cancel);
+      // A pointer action aims at a point of the viewport, and the first attach in a tab shows Chrome's debugging bar,
+      // which moves the page down after the point was read: the first click on a fresh page missed its button.
+      // So the debugger is attached, and the viewport given time to settle, before the action measures anything.
+      // (Reference-counted: the action's own attach then changes nothing.) Kept out, the action finds that out itself.
+      const pointer = command.name === 'click' || command.name === 'hover' || command.name === 'drag';
+      const session = pointer ? this.#sessions.get(command.session) : undefined;
+      const tabId = session?.active ? session.tabs.get(session.active) : undefined;
+      let held = false;
+      if (tabId !== undefined) {
+        try {
+          await this.#claimDebugger(tabId);
+          held = true;
+          await this.#settledViewport(tabId);
+        } catch { /* refused or kept out: the action reports it in its own words */ }
+      }
+      try {
+        return await INPUT[command.name as InputName](this.#driver, command, cancel);
+      } finally {
+        if (held) await this.#releaseDebugger(tabId!);
+      }
     }
     // The rest manage tabs and read the page: the executor's own work.
     switch (command.name) {
