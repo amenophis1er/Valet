@@ -374,8 +374,9 @@ button.stop:hover { background: var(--v-danger-soft); }
 }
 .menu button:hover, .menu button:focus-visible { background: var(--v-surface-hover); }
 .menu button::before { content: ""; grid-row: 1 / span 2; width: 18px; height: 18px; }
-.menu .title { grid-column: 2; font-size: var(--v-fs-sm); line-height: var(--v-lh-sm); font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.menu small { grid-column: 2; font-size: var(--v-fs-xs); line-height: var(--v-lh-xs); font-weight: 400; color: var(--v-text-muted); }
+/* min-height: with overflow hidden (for the ellipsis) the title's automatic minimum is 0, and its row collapsed under the hint's. */
+.menu .title { grid-column: 2; grid-row: 1; min-height: var(--v-lh-sm); font-size: var(--v-fs-sm); line-height: var(--v-lh-sm); font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu small { grid-column: 2; grid-row: 2; font-size: var(--v-fs-xs); line-height: var(--v-lh-xs); font-weight: 400; color: var(--v-text-muted); }
 .menu .empty-menu { padding: 8px 10px; color: var(--v-text-muted); font-size: var(--v-fs-sm); }
 /* Radio menus: a check on the one chosen. */
 .where-menu button[aria-checked="true"]::before {
