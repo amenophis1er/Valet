@@ -420,12 +420,15 @@ button.stop:hover { background: var(--v-danger-soft); }
 .sheet > .status-line { padding: 8px 14px; border-top: 1px solid var(--v-line); }
 
 /* Connections: tap a row to use it; its model is picked on the row. */
-.connections li { display: flex; gap: 12px; align-items: flex-start; padding: 12px 8px 12px 14px; cursor: pointer; }
+/* One line per connection, its model named in it; the one in use opens into a card with the picker and the endpoint. */
+.connections li { display: flex; gap: 12px; align-items: flex-start; padding: 9px 8px 9px 14px; cursor: pointer; }
 .connections li:hover { background: var(--v-surface-hover); }
-.connections li.active { cursor: default; background: var(--v-accent-soft); }
+.connections li.active { cursor: default; background: var(--v-accent-soft); padding-top: 12px; padding-bottom: 12px; }
+.connections .model-line { font-family: inherit; font-size: var(--v-fs-xs); line-height: var(--v-lh-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .connections .dot { width: 18px; height: 18px; margin-top: 1px; flex: none; border-radius: 50%; border: 1.5px solid var(--v-line-control); background: var(--v-surface-raised); }
 .connections li.active .dot { border-color: var(--v-accent); background: radial-gradient(circle, var(--v-accent) 0 4.5px, var(--v-surface-raised) 5px); }
 .connections .name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.connections li:not(.active) .name { gap: 1px; }
 .connections .title { display: flex; gap: 8px; align-items: center; font-size: var(--v-fs-sm); line-height: var(--v-lh-sm); font-weight: 600; min-width: 0; }
 .connections .title span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .connections .pill { flex: none; font-size: var(--v-fs-xs); font-weight: 600; color: var(--v-accent-text); }
