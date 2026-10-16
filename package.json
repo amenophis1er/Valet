@@ -1,6 +1,6 @@
 {
   "name": "valet",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "An AI agent that works in your own Chrome, with the model you bring. No server, no account, no companion app.",
   "private": true,
   "type": "module",
